@@ -42,7 +42,23 @@ build:
       INIT: /lib/systemd/systemd
     commands:
       - make appliance
+      
+  boodtrap-staging:
+    image: golang:1.6.0
+    pull: true
+    environment:
+      BIN: bin
+    commands:
+      - make bootstrap-staging
 
+  bootstrap:
+    image: golang:1.6.0
+    pull: true
+    environment:
+      BIN: bin
+      INIT: /sbin/init
+    commands:
+      - make bootstrap
   test:
     image: golang:1.6.0
     pull: true

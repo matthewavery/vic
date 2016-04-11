@@ -21,19 +21,45 @@ import (
 	log "github.com/Sirupsen/logrus"
 )
 
+//This logger is compatible with the standard lib logger.
+var defaultLogger = *log.New()
+
+//Begin : begin trace logging function with a provided standard logger.
 func Begin(msg string) (string, string, time.Time) {
+	return logBegin(msg, defaultLogger)
+}
+
+//BeginLogger : begin trace logging function that allows user to provide their logger.
+func BeginLogger(msg string, logger log.Logger) (string, string, time.Time) {
+	return logBegin(msg, logger)
+}
+
+//helper function that abstracts out the actual beginning of the trace logging.
+func logBegin(msg string, logger log.Logger) (string, string, time.Time) {
 	pc, _, _, _ := runtime.Caller(1)
 	name := runtime.FuncForPC(pc).Name()
 
 	if msg == "" {
-		log.Printf("[BEGIN] [%s]", name)
+		logger.Printf("[BEGIN] [%s]", name)
 	} else {
-		log.Printf("[BEGIN] [%s] %s", name, msg)
+		logger.Printf("[BEGIN] [%s] %s", name, msg)
 	}
 	return msg, name, time.Now()
+
 }
 
+//End : end trace logging function with a provided standard logger.
 func End(msg string, name string, startTime time.Time) {
+	logEnd(msg, name, startTime, defaultLogger)
+}
+
+//EndLogger : end trace logging function that allows user to provide their logger.
+func EndLogger(msg string, name string, startTime time.Time, logger log.Logger) {
+	logEnd(msg, name, startTime, logger)
+}
+
+//helper function that abstracts out the actual ending of the trace logging.
+func logEnd(msg string, name string, startTime time.Time, logger log.Logger) {
 	endTime := time.Now()
-	log.Printf("[ END ] [%s] [%s] %s", name, endTime.Sub(startTime), msg)
+	logger.Printf("[ END ] [%s] [%s] %s", name, endTime.Sub(startTime), msg)
 }
