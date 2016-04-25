@@ -21,7 +21,7 @@ if [ "$(uname -s)" = "Darwin" ]; then
   PATH="/Applications/VMware Fusion.app/Contents/Library:$PATH"
 fi
 
-export GOVC_URL=${GOVC_URL-"root:vagrant@localhost:18443"}
+export GOVC_URL=${GOVC_URL-"root:password@192.168.218.135:18443"}
 export GOVC_DATASTORE=${GOVC_DATASTORE-"datastore1"}
 export GOVC_NETWORK=${GOVC_NETWORK-"VM Network"}
 export GOVC_INSECURE=1
