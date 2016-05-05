@@ -28,7 +28,7 @@ build:
       - make iso-base
 
   appliance-staging:
-    image: golang:1.6.2
+    image: vmware/photon
     pull: true
     environment:
       BIN: bin
@@ -36,7 +36,7 @@ build:
       - make appliance-staging
 
   appliance:
-    image: golang:1.6.2
+    image: vmware/photon
     pull: true
     environment:
       BIN: bin
@@ -45,7 +45,7 @@ build:
       - make appliance
 
   bootstrap-staging:
-    image: golang:1.6.2
+    image: vmware/photon
     pull: true
     environment:
       BIN: bin
@@ -53,7 +53,7 @@ build:
       - make bootstrap-staging
 
   bootstrap:
-    image: golang:1.6.2
+    image: vmware/photon
     pull: true
     environment:
       BIN: bin
