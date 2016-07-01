@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,6 +38,8 @@ import (
 	"github.com/docker/engine-api/types/container"
 	"github.com/docker/engine-api/types/strslice"
 
+	"github.com/google/uuid"
+
 	viccontainer "github.com/vmware/vic/lib/apiservers/engine/backends/container"
 	"github.com/vmware/vic/lib/apiservers/portlayer/client"
 	"github.com/vmware/vic/lib/apiservers/portlayer/client/containers"
@@ -50,6 +53,12 @@ import (
 
 // Container struct represents the Container
 type Container struct {
+}
+
+type volumeFields struct {
+	VolumeID    string
+	VolumeDest  string
+	VolumeFlags string
 }
 
 const (
@@ -135,7 +144,6 @@ func (c *Container) ContainerCreate(config types.ContainerCreateConfig) (types.C
 
 	//TODO: validate the config parameters
 	log.Printf("config.Config = %+v", config.Config)
-
 	// Get an API client to the portlayer
 	client := PortLayerClient()
 	if client == nil {
@@ -182,7 +190,7 @@ func (c *Container) ContainerCreate(config types.ContainerCreateConfig) (types.C
 		config.Name = namesgenerator.GetRandomName(0)
 	}
 
-	log.Printf("ContainerCreate config' = %+v", config)
+	log.Printf("ContainerCreate config' = %#v", config)
 	// Call the Exec port layer to create the container
 	host, err := guest.UUID()
 	if err != nil {
@@ -232,6 +240,25 @@ func (c *Container) ContainerCreate(config types.ContainerCreateConfig) (types.C
 		}()
 
 		h = addContRes.Payload
+	}
+
+	//Volume Attachment Section
+	for i, v := range config.HostConfig.Binds {
+		fields, err, shouldExist := processVolumeParam(v)
+		var volumeResponse models.VolumeResponse
+		if err != nil {
+			return nil, derr.NewErrorWithStatusCode(fmt.Errorf("Server error from Portlayer: %s", err), http.StatusBadRequest)
+		}
+		if !shouldExist {
+			//FIXME: in the future a default Capacity will be expected from ExtraConfig<vic-machine>
+			volumeRquest := models.VolumeRequest{
+				Capacity: 1024,
+				Driver:   "vsphere",
+				Store:    "default",
+			}
+			client.Storage.CreateVolume(storage.NewCreateVolumeParams().WithVolumeRequest(volumeRequest * models.VolumeRequest))
+		}
+
 	}
 
 	// commit the create op
@@ -954,4 +981,33 @@ func copyEscapable(dst io.Writer, src io.ReadCloser, keys []byte) (written int64
 		}
 	}
 	return written, err
+}
+
+func processVolumeParam(volString string) (volumeFields, error, bool) {
+	volumeStrings := strings.Split(volString, ":")
+	fields := volumeFields{}
+	created := true
+	switch len(volumeStrings) {
+	case 1:
+		VolumeID, err := uuid.NewUUID()
+		if err != nil {
+			return volumeFields{}, nil, false
+		}
+		fields.VolumeID = VolumeID.String()
+		fields.VolumeDest = volumeStrings[0]
+		fields.VolumeFlags = "rw"
+		created = false
+	case 2:
+		fields.VolumeID = volumeStrings[0]
+		fields.VolumeDest = volumeStrings[1]
+		fields.VolumeFlags = "rw"
+	case 3:
+		fields.VolumeID = volumeStrings[0]
+		fields.VolumeDest = volumeStrings[1]
+		fields.VolumeFlags = volumeStrings[2]
+	default:
+		//NOTE: the docker cli should cover this case. This is here for posterity.
+		return volumeFields{}, fmt.Errorf("Volume bind input is invalid : -v %s", volString), false
+	}
+	return fields, nil, created
 }
