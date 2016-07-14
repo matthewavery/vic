@@ -12,7 +12,7 @@ ${bin-dir}  /drone/src/github.com/vmware/vic/bin
 
 *** Keywords ***
 Install VIC Appliance To Test Server
-    [Arguments]  ${certs}=${false}
+    [Arguments]  ${certs}=${false}  ${volume-stores}=${}
     # Finish setting up environment variables
     ${status}  ${message}=  Run Keyword And Ignore Error  Environment Variable Should Be Set  DRONE_BUILD_NUMBER
     Run Keyword If  '${status}' == 'FAIL'  Set Environment Variable  DRONE_BUILD_NUMBER  0
@@ -36,7 +36,7 @@ Install VIC Appliance To Test Server
     Log To Console  \nInstalling VCH to test server...
     ${output}=  Run VIC Machine Command  ${certs}
     ${line}=  Get Line  ${output}  -2
-    ${ret}=  Fetch From Right  ${line}  ] docker
+    ${}${ret}=  Fetch From Right  ${line}  ] docker
     ${ret}=  Remove String  ${ret}  info
     ${ret}=  Strip String  ${ret}
     Set Suite Variable  ${params}  ${ret}
@@ -50,11 +50,11 @@ Install VIC Appliance To Test Server
 Run VIC Machine Command
     [Tags]  secret
     [Arguments]  ${certs}
-    ${output}=  Run Keyword If  ${certs}  Run  bin/vic-machine-linux create --name=${vch-name} --target=%{TEST_URL} --user=%{TEST_USERNAME} --image-datastore=%{TEST_DATASTORE} --appliance-iso=bin/appliance.iso --bootstrap-iso=bin/bootstrap.iso --generate-cert --password=%{TEST_PASSWORD} --force=true --bridge-network=network --compute-resource=%{TEST_RESOURCE} --timeout %{TEST_TIMEOUT}
+    ${output}=  Run Keyword If  ${certs}  Run  bin/vic-machine-linux create --name=${vch-name} --target=%{TEST_URL} --user=%{TEST_USERNAME} --image-datastore=%{TEST_DATASTORE} --appliance-iso=bin/appliance.iso --bootstrap-iso=bin/bootstrap.iso --password=%{TEST_PASSWORD} --force=true --bridge-network=network --compute-resource=%{TEST_RESOURCE} --timeout %{TEST_TIMEOUT}
     Run Keyword If  ${certs}  Run Keyword And Ignore Error  Should Contain  ${output}  Installer completed successfully
     Return From Keyword If  ${certs}  ${output}
     
-    ${output}=  Run Keyword Unless  ${certs}  Run  bin/vic-machine-linux create --name=${vch-name} --target=%{TEST_URL} --user=%{TEST_USERNAME} --image-datastore=%{TEST_DATASTORE} --appliance-iso=bin/appliance.iso --bootstrap-iso=bin/bootstrap.iso --password=%{TEST_PASSWORD} --force=true --bridge-network=network --compute-resource=%{TEST_RESOURCE} --timeout %{TEST_TIMEOUT}
+    ${output}=  Run Keyword Unless  ${certs}  Run  bin/vic-machine-linux create --name=${vch-name} --target=%{TEST_URL} --user=%{TEST_USERNAME} --image-datastore=%{TEST_DATASTORE} --appliance-iso=bin/appliance.iso --bootstrap-iso=bin/bootstrap.iso --password=%{TEST_PASSWORD} --force=true --bridge-network=network --compute-resource=%{TEST_RESOURCE} --timeout %{TEST_TIMEOUT} --no-tls
     Run Keyword Unless  ${certs}  Run Keyword And Ignore Error  Should Contain  ${output}  Installer completed successfully
     [Return]  ${output}
 
