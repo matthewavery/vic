@@ -104,6 +104,10 @@ const (
 	swaggerSubstringEOF                  = "EOF"
 	forceLogType                         = "json-file" //Use in inspect to allow docker logs to work
 	annotationKeyLabels                  = "docker.labels"
+
+	DriverArgFlagKey      = "flags"
+	DriverArgContainerKey = "Container"
+	DriverArgImageKey     = "Image"
 )
 
 // NewContainerProxy creates a new ContainerProxy
@@ -231,7 +235,9 @@ func (c *ContainerProxy) AddVolumesToContainer(handle string, config types.Conta
 	for _, fields := range volList {
 
 		driverArgs := make(map[string]string)
-		driverArgs["flags"] = fields.Flags
+		driverArgs[DriverArgFlagKey] = fields.Flags
+		driverArgs[DriverArgContainerKey] = config.Name
+		driverArgs[DriverArgImageKey] = config.Config.Image
 
 		// NOTE: calling volumeCreate regardless of whether the volume is already
 		// present can be avoided by adding an extra optional param to VolumeJoin,
