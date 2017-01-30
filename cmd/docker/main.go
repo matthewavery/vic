@@ -105,7 +105,7 @@ func main() {
 		log.Fatalf("failed to initialize logging: %s", err)
 	}
 
-	if err := vicbackends.Init(*cli.portLayerAddr, productName, *cli.serverPort, &vchConfig); err != nil {
+	if err := vicbackends.Init(*cli.portLayerAddr, productName, &vchConfig, vchConfig.InsecureRegistries); err != nil {
 		log.Fatalf("failed to initialize backend: %s", err)
 	}
 
@@ -146,6 +146,10 @@ func handleFlags() bool {
 			log.Fatalf("Unable to look up %s for portlayer API: %s", constants.ClientHostName, err)
 		}
 		*cli.portLayerAddr = clientIP.String()
+	}
+
+	if *cli.debug || vchConfig.Diagnostics.DebugLevel > 0 {
+		log.SetLevel(log.DebugLevel)
 	}
 	*cli.portLayerAddr = fmt.Sprintf("%s:%d", *cli.portLayerAddr, *cli.portLayerPort)
 	cli.proto = "tcp"

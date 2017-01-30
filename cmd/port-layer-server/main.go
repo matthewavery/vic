@@ -46,6 +46,13 @@ var (
 
 func init() {
 	pprof.StartPprof("portlayer server", pprof.PortlayerPort)
+	options = dns.ServerOptions{}
+	parser  *flags.Parser
+	server  *restapi.Server
+)
+
+func init() {
+	log.SetFormatter(viclog.NewTextFormatter())
 
 	swaggerSpec, err := loads.Analyzed(restapi.SwaggerJSON, "")
 	if err != nil {
@@ -71,6 +78,9 @@ func init() {
 
 func main() {
 
+}
+
+func main() {
 	if _, err := parser.Parse(); err != nil {
 		if err := err.(*flags.Error); err != nil && err.Type == flags.ErrHelp {
 			os.Exit(0)
@@ -119,6 +129,8 @@ func main() {
 	log.Infof("%+v", *logcfg)
 	// #nosec: Errors unhandled.
 	viclog.Init(logcfg)
+
+	pprof.StartPprof("portlayer server", pprof.PortlayerPort)
 
 	server.ConfigureAPI()
 

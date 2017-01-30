@@ -122,7 +122,9 @@ iso-base := $(BIN)/.iso-base.tgz
 
 # target aliases - target mapping
 docker-engine-api: $(docker-engine-api)
+docker-engine-api-test: $(docker-engine-api-test)
 portlayerapi: $(portlayerapi)
+portlayerapi-test: $(portlayerapi-test)
 portlayerapi-client: $(portlayerapi-client)
 portlayerapi-server: $(portlayerapi-server)
 serviceapi: $(serviceapi)
@@ -304,6 +306,10 @@ $(vic-init-test): $$(call godeps,cmd/vic-init/*.go)
 	@echo building vic-init-test
 	@CGO_ENABLED=1 GOOS=linux GOARCH=amd64 $(GO) test -c -coverpkg github.com/vmware/vic/lib/...,github.com/vmware/vic/pkg/... -outputdir /tmp -coverprofile init.cov -o ./$@ ./$(dir $<)
 
+$(vic-init-test): $$(call godeps,cmd/vic-init/*.go)
+	@echo building vic-init-test
+	@CGO_ENABLED=1 GOOS=linux GOARCH=amd64 $(GO) test -c -coverpkg github.com/vmware/vic/lib/...,github.com/vmware/vic/pkg/... -outputdir /tmp -coverprofile init.cov -o ./$@ ./$(dir $<)
+
 $(tether-linux): $$(call godeps,cmd/tether/*.go)
 	@echo building tether-linux
 	@CGO_ENABLED=1 GOOS=linux GOARCH=amd64 $(TIME) $(GO) build $(RACE) -tags netgo -installsuffix netgo -ldflags '$(LDFLAGS) -extldflags "-static"' -o ./$@ ./$(dir $<)
@@ -386,6 +392,10 @@ $(serviceapi): $$(call godeps,cmd/vic-machine-server/*.go) $(serviceapi-server)
 	@echo building vic-machine-as-a-service API server...
 	@$(TIME) $(GO) build $(RACE) -ldflags "$(LDFLAGS)" -o $@ ./cmd/vic-machine-server
 
+
+$(portlayerapi-test): $$(call godeps,cmd/port-layer-server/*.go) $(portlayerapi-server) $(portlayerapi-client)
+	@echo building Portlayer API server for test...
+	@$(TIME) $(GO) test -c -coverpkg github.com/vmware/vic/lib/...,github.com/vmware/vic/pkg/... -coverprofile port-layer-server.cov -outputdir /tmp -o $@ ./cmd/port-layer-server
 
 $(iso-base): isos/base.sh isos/base/*.repo isos/base/isolinux/** isos/base/xorriso-options.cfg
 	@echo building iso-base docker image
