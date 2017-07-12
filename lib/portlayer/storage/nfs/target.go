@@ -47,6 +47,9 @@ type Target interface {
 	// Mkdir creates a directory at the given path
 	Mkdir(path string, perm os.FileMode) ([]byte, error)
 
+	// Remove will remove the target file.
+	Remove(path string) error
+
 	// RemoveAll deletes Directory recursively
 	RemoveAll(Path string) error
 
