@@ -23,18 +23,18 @@ import (
 	"github.com/vmware/vic/pkg/trace"
 )
 
-// MountDataSource implements the DataSource interface for mounted devices
+// MountDataSink implements the DataSink interface for mounted devices
 type MountDataSink struct {
 	Path  *os.File
 	Clean func()
 }
 
-// Source returns the data source associated with the DataSource
+// Source returns the data source associated with the DataSink
 func (m *MountDataSink) Sink() interface{} {
 	return m.Path
 }
 
-// Import writes `data` to the data source associated with this DataSource
+// Import writes `data` to the data source associated with this DataSink
 func (m *MountDataSink) Import(op trace.Operation, spec *archive.FilterSpec, data io.ReadCloser) error {
 	fi, err := m.Path.Stat()
 	if err != nil {

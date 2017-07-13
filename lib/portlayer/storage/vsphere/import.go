@@ -36,7 +36,7 @@ func (v *VolumeStore) Import(op trace.Operation, id string, spec *archive.Filter
 	return l.Import(op, spec, tarstream)
 }
 
-// NewDataSource creates and returns an DataSource associated with container storage
+// NewDataSink creates and returns an DataSink associated with container storage
 func (v *VolumeStore) NewDataSink(op trace.Operation, id string) (storage.DataSink, error) {
 	uri, err := v.URL(op, id)
 	if err != nil {

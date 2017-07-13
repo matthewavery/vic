@@ -84,7 +84,7 @@ func Tar(op trace.Operation, dir string, changes []docker.Change, spec *FilterSp
 		}()
 
 		for _, change := range changes {
-			if excluded(change.Path, spec) {
+			if Excluded(change.Path, spec) {
 				continue
 			}
 
@@ -125,7 +125,7 @@ func Tar(op trace.Operation, dir string, changes []docker.Change, spec *FilterSp
 }
 
 // handle exclusion/inclusion of paths
-func excluded(filePath string, spec *FilterSpec) bool {
+func Excluded(filePath string, spec *FilterSpec) bool {
 	for p := filePath; p != string(filepath.Separator); p = filepath.Dir(p) {
 		if _, ok := spec.Inclusions[p]; ok {
 			return false
