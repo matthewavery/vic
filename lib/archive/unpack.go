@@ -16,7 +16,6 @@ package archive
 
 import (
 	"archive/tar"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -45,25 +44,33 @@ func Unpack(op trace.Operation, tarStream io.Reader, filter *FilterSpec, unpackP
 	// the tar stream should be wrapped up at the end of this call
 	tr := tar.NewReader(tarStream)
 
-	strip := filter.StripPath
-	target := filter.RebasePath
-
-	if target == "" {
-		op.Debugf("Bad target path in FilterSpec (%#v)", filter)
-		return fmt.Errorf("Invalid write target specified")
+	if filter.RebasePath == "" {
+		op.Debugf("Setting Rebase path to \"/\"")
+		filter.RebasePath = "/"
 	}
 
-	if strip == "" {
+	if filter.StripPath == "" {
 		op.Debugf("Strip path was set to \"\"")
+		filter.StripPath = "/"
 	}
 
-	if _, err := os.Stat(unpackPath); err != nil {
+	targetInfo, err := os.Stat(unpackPath)
+	if err != nil {
 		// the target unpack path does not exist. We should not get here.
 		op.Errorf("tar unpack target does not exist (%s)", unpackPath)
 		return err
 	}
 
-	finalTargetPath := filepath.Join(unpackPath, target)
+	if !targetInfo.IsDir() {
+		// we need to handle this case separately. Depending on the assets in the stream.
+		// If the stream contains a single file then we should attempt a rename. if it contains
+		// more than that we should likely reject.
+
+		return nil
+	}
+
+	// we do this here as an optimization, so we do not have to append rebase for every asset header.
+	finalTargetPath := filepath.Join(unpackPath, filter.RebasePath)
 	op.Debugf("finalized target path for Tar unpack operation at (%s)", finalTargetPath)
 
 	// process the tarball onto the filesystem
@@ -85,7 +92,7 @@ func Unpack(op trace.Operation, tarStream io.Reader, filter *FilterSpec, unpackP
 		}
 
 		// fix up path
-		strippedTargetPath := strings.TrimPrefix(header.Name, strip)
+		strippedTargetPath := strings.TrimPrefix(header.Name, filter.StripPath)
 		writePath := filepath.Join(finalTargetPath, strippedTargetPath)
 
 		switch header.Typeflag {
