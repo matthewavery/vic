@@ -63,7 +63,6 @@ func Unpack(op trace.Operation, tarStream io.Reader, filter *FilterSpec, unpackP
 		return err
 	}
 
-	finalTargetPath := filepath.Join(unpackPath, target)
 	op.Debugf("finalized target path for Tar unpack operation at (%s)", finalTargetPath)
 
 	// process the tarball onto the filesystem
@@ -86,7 +85,8 @@ func Unpack(op trace.Operation, tarStream io.Reader, filter *FilterSpec, unpackP
 
 		// fix up path
 		strippedTargetPath := strings.TrimPrefix(header.Name, strip)
-		writePath := filepath.Join(finalTargetPath, strippedTargetPath)
+		rebasedAndStrippedPath := filepath.Join(filter.RebasePath, strippedTargetPath)
+		writePath := filepath.Join(unpackPath, strippedTargetPath)
 
 		switch header.Typeflag {
 		case tar.TypeDir:

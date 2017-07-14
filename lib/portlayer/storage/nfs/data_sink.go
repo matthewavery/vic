@@ -28,7 +28,7 @@ import (
 
 // MountDataSink implements the DataSink interface for mounted devices
 type NFSDataSink struct {
-	NfsTarget  *Target
+	NfsTarget  Target
 	volumePath string
 	Clean      func()
 }
@@ -39,7 +39,7 @@ func (n *NFSDataSink) Sink() interface{} {
 }
 
 func (n *NFSDataSink) Import(op trace.Operation, spec *archive.FilterSpec, data io.ReadCloser) error {
-	return unpackUsingTarget(op, spec, data, n.NfsTarget, n.volumePath)
+	return n.unpackUsingTarget(op, spec, data, n.volumePath)
 }
 
 func (n *NFSDataSink) Close() error {
@@ -57,11 +57,10 @@ func (n *NFSDataSink) Close() error {
 // - exlude : marks paths that are to be excluded from the write operation
 // - rebase : marks the the write path that will be tacked onto the "volumePath". e.g /tmp/unpack + /my/target/path = /tmp/unpack/my/target/path
 // NOTE: this is a heavily influenced by the lib/archive/unpack.go unpack implementation
-func unpackUsingTarget(op trace.Operation, spec *archive.FilterSpec, tarStream io.ReadCloser, nfsTarget *Target, volumePath string) error {
+func (n *NFSDataSink) unpackUsingTarget(op trace.Operation, spec *archive.FilterSpec, tarStream io.ReadCloser, volumePath string) error {
 	// the tar stream should be wrapped up at the end of this call
 	tr := tar.NewReader(tarStream)
 
-	strip := spec.StripPath
 	target := spec.RebasePath
 
 	if target == "" {
@@ -69,13 +68,15 @@ func unpackUsingTarget(op trace.Operation, spec *archive.FilterSpec, tarStream i
 		return fmt.Errorf("Invalid write target specified")
 	}
 
-	if strip == "" {
-		op.Debugf("Strip path was set to \"\"")
-	}
-
-	if _, _, err := nfsTarget.Lookup(volumePath); err != nil {
+	rootInfo, _, err := n.NfsTarget.Lookup(volumePath)
+	if err != nil {
 		// the target unpack path does not exist. We should not get here.
 		op.Errorf("tar unpack target does not exist (%s)", volumePath)
+		return err
+	}
+
+	if !rootInfo.IsDir() {
+		op.Errorf("tar unpack target is not a directory: %s", root)
 		return err
 	}
 
@@ -101,12 +102,11 @@ func unpackUsingTarget(op trace.Operation, spec *archive.FilterSpec, tarStream i
 		}
 
 		// fix up path
-		strippedTargetPath := strings.TrimPrefix(header.Name, strip)
-		writePath := filepath.Join(finalTargetPath, strippedTargetPath)
+		writePath := filepath.Join(finalTargetPath, header.Name)
 
 		switch header.Typeflag {
 		case tar.TypeDir:
-			err = mkdirAll(writePath, header.FileInfo().Mode(), nfsTarget)
+			err = n.mkdirAll(writePath, header.FileInfo().Mode())
 			if err != nil {
 				return err
 			}
@@ -119,13 +119,13 @@ func unpackUsingTarget(op trace.Operation, spec *archive.FilterSpec, tarStream i
 			targetDir, _ := filepath.Split(writePath)
 
 			// FIXME: this is a hack we must include the directory before this instead of excluding it. since the permissions could be different.
-			err = mkdirAll(writePath, header.FileInfo().Mode(), nfsTarget)
+			err = n.mkdirAll(writePath, header.FileInfo().Mode())
 			if err != nil {
 				// bail for now instead of skipping.
 				return err
 			}
 
-			err = createRegularFile(writePath, fileWriteFlags, header.FileInfo().Mode(), tr, target)
+			err = n.createRegularFile(writePath, header.FileInfo().Mode(), tr)
 			if err != nil {
 				return err
 			}
@@ -135,7 +135,7 @@ func unpackUsingTarget(op trace.Operation, spec *archive.FilterSpec, tarStream i
 }
 
 // createRegularFile will use the provided nfs target to create the target file
-func createRegularFile(path string, flags int, perm os.FileMode, tr *tar.Reader, target *Target) error {
+func (n *NFSDataSink) createRegularFile(path string, perm os.FileMode, tr *tar.Reader) error {
 
 	// notes:
 	// 1. check if file exists
@@ -144,7 +144,7 @@ func createRegularFile(path string, flags int, perm os.FileMode, tr *tar.Reader,
 	// 4. write the contents.
 	// 5. close the file
 
-	info, _, err := nfsTarget.Lookup(path)
+	info, _, err := n.NfsTarget.Lookup(path)
 	if err == nil {
 		if info.IsDir() {
 			// cannot overwrite directory with non directory
@@ -152,7 +152,7 @@ func createRegularFile(path string, flags int, perm os.FileMode, tr *tar.Reader,
 			return fmt.Errorf("Cannot overwrite directory with non directory at path (%s)", path)
 		}
 		// since we cannot tell the nfs client to truncate we must remove the file
-		err = target.Remove(path)
+		err = n.NfsTarget.Remove(path)
 		if err != nil {
 			return err
 		}
@@ -162,7 +162,7 @@ func createRegularFile(path string, flags int, perm os.FileMode, tr *tar.Reader,
 		return err
 	}
 
-	writtenTarFile, err := target.OpenFile(path, perm)
+	writtenTarFile, err := n.NfsTarget.OpenFile(path, perm)
 	if err != nil {
 		return nil
 	}
@@ -176,7 +176,7 @@ func createRegularFile(path string, flags int, perm os.FileMode, tr *tar.Reader,
 }
 
 // mkdirAll is a utility function that takes the provided target and creates all targets along a specified path
-func mkdirAll(path string, mode os.FileMode, target *Target) error {
+func (n *NFSDataSink) mkdirAll(path string, mode os.FileMode) error {
 	var dirsToCreate []string
 	currentPath := path
 	parent, dirName := filepath.Split(currentPath)
@@ -187,7 +187,7 @@ func mkdirAll(path string, mode os.FileMode, target *Target) error {
 	}
 
 	// ensure target does not already exist.
-	info, _, err := target.Lookup(currentPath)
+	info, _, err := n.NfsTarget.Lookup(currentPath)
 	if err == nil {
 		if !info.IsDir() {
 			// only return ERREXIST if the target is not a directory
@@ -205,7 +205,7 @@ func mkdirAll(path string, mode os.FileMode, target *Target) error {
 			break
 		}
 
-		info, _, err := target.Lookup(currentPath)
+		info, _, err := n.NfsTarget.Lookup(currentPath)
 		if err == nil {
 			if !info.IsDir() {
 				// only return ERREXIST if the target is not a directory
@@ -228,7 +228,7 @@ func mkdirAll(path string, mode os.FileMode, target *Target) error {
 	// now create the needed directories in order
 	for _, dir := range dirsToCreate {
 		currentPath = filepath.Join(currentPath, dir)
-		_, err := target.Mkdir(currentPath, info.Mode())
+		_, err := n.NfsTarget.Mkdir(currentPath, info.Mode())
 
 		// bail on error here
 		if err != nil {

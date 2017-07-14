@@ -100,10 +100,19 @@ func Tar(op trace.Operation, dir string, changes []docker.Change, spec *FilterSp
 				hdr.Size = 0
 			}
 
-			_ = tw.WriteHeader(hdr)
+			err = tw.WriteHeader(hdr)
+			if err != nil {
+				// NOTE to self: it is likely that we should not continue writing the tar in this case, it is unclear whether the tar writer partially wrote anything or not.
+				op.Debugf("Encountered error when attempting to write tar header for (%s) : %s", hdr.Name, err)
+			}
 
 			p := filepath.Join(dir, change.Path)
 			if hdr.Typeflag == tar.TypeReg && hdr.Size != 0 {
+
+				// FIXME: this section here should be wrapped in a closure.
+				//        This will allow us to defer "f.Close()" as soon
+				//        as possible. Allowing us to avoid having too many
+				//        files open at once.
 				f, err = os.Open(p)
 				if err != nil {
 					if os.IsPermission(err) {
