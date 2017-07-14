@@ -250,11 +250,8 @@ func NewArchiveStreamWriterMap(mounts []types.MountPoint, containerDestPath stri
 		// Here, we must tell the portlayer to remove "mnt/A".  The key to determining whether to
 		// strip "A" or "mnt/A" is based on the container destination path.
 		if containerDestPath != "/" && strings.HasPrefix(aw.mountPoint.Destination, containerDestPath) {
-			aw.filterSpec.StripPath = strings.TrimPrefix(aw.mountPoint.Destination, containerDestPath)
+			aw.filterSpec = vicarchive.GenerateFilterSpec(containerDestPath, aw.mountPoint, !strings.Contains(aw.mountPoint, containerDestPath), vicarchive.CopyTo)
 		}
-
-		aw.filterSpec.Exclusions = make(map[string]struct{})
-		aw.filterSpec.Inclusions = make(map[string]struct{})
 
 		writerMap.prefixTrie.Insert(patricia.Prefix(m.Destination), &aw)
 	}
@@ -288,11 +285,8 @@ func NewArchiveStreamReaderMap(mounts []types.MountPoint) *ArchiveStreamReaderMa
 		// Neither the volume nor the storage portlayer knows about /mnt/A.  The persona must tell
 		// the portlayer to rebase all files from this volume to the /mnt/A/ in the final tar stream.
 		if ar.mountPoint.Destination != "/" {
-			ar.filterSpec.RebasePath = ar.mountPoint.Destination
+			ar.filterSpec = vicarchive.GenerateFilterSpec(containerDestPath, ar.mountPoint.Destination, !strings.Contains(ar.mountPoint.Destination, containerDestPath), vicarchive.CopyTo)
 		}
-
-		ar.filterSpec.Exclusions = make(map[string]struct{})
-		ar.filterSpec.Inclusions = make(map[string]struct{})
 
 		readerMap.prefixTrie.Insert(patricia.Prefix(m.Destination), &ar)
 	}
