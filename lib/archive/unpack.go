@@ -81,9 +81,9 @@ func Unpack(op trace.Operation, tarStream io.Reader, filter *FilterSpec, root st
 		}
 
 		// fix up path
-		stripped := strings.TrimPrefix(header.Name, filter.StripPath)
-		rebased := filepath.Join(filter.RebasePath, stripped)
-		absPath := filepath.Join(root, rebased)
+
+		strippedTargetPath := strings.TrimPrefix(header.Name, filter.StripPath)
+		absPath := filepath.Join(filter.RebasePath, strippedTargetPath)
 
 		switch header.Typeflag {
 		case tar.TypeDir:
