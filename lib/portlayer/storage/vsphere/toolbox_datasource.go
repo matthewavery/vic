@@ -80,6 +80,15 @@ func (t *ToolboxDataSource) Stat(op trace.Operation, spec *archive.FilterSpec) (
 
 	// should only find a single path to stat, but make sure here.
 	var statPath string
+	inclusions := len(spec.Inclusions)
+	if inclusions == 0 {
+		op.Debugf("filter spec for stat operation has no inclusion specified : %#v", *spec)
+	}
+
+	if inclusions > 1 {
+		op.Debugf("filter spec for stat operation had multiple inclusion paths : %#v", *spec)
+	}
+
 	for inclusion := range spec.Inclusions {
 		statPath = inclusion
 	}
