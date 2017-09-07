@@ -54,13 +54,11 @@ func (d *Dispatcher) createResourcePool(conf *config.VirtualContainerHostConfigS
 	log.Infof("Creating Resource Pool %q", conf.Name)
 	// TODO: expose the limits and reservation here via options
 	resSpec := types.ResourceConfigSpec{
-		CpuAllocation: &types.ResourceAllocationInfo{
-			ExpandableReservation: types.NewBool(true),
-		},
-		MemoryAllocation: &types.ResourceAllocationInfo{
-			ExpandableReservation: types.NewBool(true),
-		},
+		CpuAllocation:    &types.ResourceAllocationInfo{},
+		MemoryAllocation: &types.ResourceAllocationInfo{},
 	}
+
+	//FIXME: move the below 2 lines above the respec definition above so that we are setting those values in the finalized ReouseAllocationInfo... This is because vSphere 6.0 requires all fields to be set.
 	setResources(resSpec.CpuAllocation.GetResourceAllocationInfo(), settings.VCHSize.CPU)
 	setResources(resSpec.MemoryAllocation.GetResourceAllocationInfo(), settings.VCHSize.Memory)
 
@@ -87,7 +85,14 @@ func setResources(spec *types.ResourceAllocationInfo, resource types.ResourceAll
 		spec.Shares = &types.SharesInfo{
 			Level: types.SharesLevelNormal,
 		}
+		// NOTE: Since the above is set to types.SharesLevelNormal we do not need to set spec.Share.shares
 	}
+
+	// FIXME: XXX: what should this be? default to false? or true? likely true.... as that is what we had in the past.
+	spec.ExpandableReservation = types.NewBool(true)
+
+	// FIXME: XXX: Also validate that we are good to set this value to unlimited
+	spec.OverheadLimit = -1
 }
 
 func (d *Dispatcher) destroyResourcePoolIfEmpty(conf *config.VirtualContainerHostConfigSpec) error {
