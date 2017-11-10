@@ -863,9 +863,38 @@ func (t *BaseOperations) MountTarget(ctx context.Context, source url.URL, target
 	rawSource := source.Hostname() + ":/" + source.Path
 	// NOTE: by default we are supporting "NOATIME" and it can be configurable later. this must be specfied as a flag.
 	// Additionally, we must parse out the "ro" option and supply it as a flag as well for this flavor of the mount call.
-	if err := Sys.Syscall.Mount(rawSource, target, nfsFileSystemType, syscall.MS_NOATIME, mountOptions); err != nil {
-		log.Errorf("mounting %s on %s failed: %s", source.String(), target, err)
-		return err
+
+	// Our context deadline for the mount to succeed. NOTE: this is rather low, but considering we are a container the portlayer has it's own deadline as well
+	// we need to be below that deadline in order to report faster when we give up.(debatable really)
+	MountCtx, cancelctx := context.WithDeadline(context.Background(), time.Now().Add(20*time.Second))
+
+	// channel for error reporting from mount
+	successChan := make(chan error, 1)
+
+	AttemptMountFunc := func() {
+		if err := Sys.Syscall.Mount(rawSource, target, nfsFileSystemType, syscall.MS_NOATIME, mountOptions); err != nil {
+			log.Errorf("mounting %s on %s failed: %s", source.String(), target, err)
+			successChan <- err
+		}
+		successChan <- nil
+	}
+
+	var mountErr error
+	go AttemptMountFunc()
+
+	select {
+	case <-MountCtx.Done():
+		detail := fmt.Sprintf("timed out waiting for nfs source(%s) to appear", source.String())
+		close(successChan)
+		cancelctx()
+		return errors.New(detail)
+
+	case mountErr <- successChan:
+	}
+
+	cancelctx()
+	if mountErr != nil {
+		return mountErr
 	}
 
 	return nil
