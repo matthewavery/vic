@@ -889,7 +889,7 @@ func (t *BaseOperations) MountTarget(ctx context.Context, source url.URL, target
 		cancelctx()
 		return errors.New(detail)
 
-	case mountErr <- successChan:
+	case mountErr = <-successChan:
 	}
 
 	cancelctx()
