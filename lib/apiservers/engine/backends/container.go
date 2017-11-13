@@ -218,6 +218,7 @@ func (c *Container) TaskInspect(cid, cname, eid string) (*models.TaskInspectResp
 	}
 
 	params := tasks.NewInspectParamsWithContext(ctx).WithConfig(config)
+	// FIXME: NEEDS CONTAINER PROXY
 	resp, err := client.Tasks.Inspect(params)
 	if err != nil {
 		return nil, err
@@ -242,6 +243,7 @@ func (c *Container) TaskWaitToStart(cid, cname, eid string) error {
 	}
 
 	params := tasks.NewWaitParamsWithContext(ctx).WithConfig(config)
+	// FIXME: NEEDS CONTAINER PROXY
 	_, err = client.Tasks.Wait(params)
 	if err != nil {
 		switch err := err.(type) {
@@ -305,6 +307,7 @@ func (c *Container) ContainerExecCreate(name string, config *types.ExecConfig) (
 	// associate newly created exec task with container
 	cache.ContainerCache().AddExecToContainer(vc, eid)
 
+	// FIXME: NEEDS CONTAINER PROXY
 	ec, err := c.TaskInspect(id, name, eid)
 	if err != nil {
 		switch err := err.(type) {
@@ -341,6 +344,7 @@ func (c *Container) ContainerExecInspect(eid string) (*backend.ExecInspect, erro
 	id := vc.ContainerID
 	name := vc.Name
 
+	//FIXME: NEEDS CONTAINER PROXY
 	ec, err := c.TaskInspect(id, name, eid)
 	if err != nil {
 		switch err := err.(type) {
@@ -417,6 +421,7 @@ func (c *Container) ContainerExecStart(ctx context.Context, eid string, stdin io
 	id := vc.ContainerID
 	name := vc.Name
 
+	// FIXME: NEEDS CONTAINER PROXY
 	// grab the task details
 	ec, err := c.TaskInspect(id, name, eid)
 	if err != nil {
@@ -448,6 +453,7 @@ func (c *Container) ContainerExecStart(ctx context.Context, eid string, stdin io
 
 	// call Bind with bindparams
 	bindparams := tasks.NewBindParamsWithContext(ctx).WithConfig(bindconfig)
+	// FIXME: NEEDS CONTAINER PROXY
 	resp, err := client.Tasks.Bind(bindparams)
 	if err != nil {
 		op.Errorf("Failed to bind parameters during exec start for container(%s) due to error: %s", id, err)
@@ -478,6 +484,8 @@ func (c *Container) ContainerExecStart(ctx context.Context, eid string, stdin io
 		// we do not return an error here if this fails. TODO: Investigate what exactly happens on error here...
 		go func() {
 			defer trace.End(trace.Begin(eid))
+
+			// FIXME: NEEDS CONTAINER PROXY
 			// wait property collector
 			if err := c.TaskWaitToStart(id, name, eid); err != nil {
 				op.Errorf("Task wait returned %s, canceling the context", err)
