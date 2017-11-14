@@ -203,28 +203,12 @@ func (c *Container) Handle(id, name string) (string, error) {
 // docker's container.execBackend
 
 func (c *Container) TaskInspect(cid, cname, eid string) (*models.TaskInspectResponse, error) {
-	// obtain a portlayer client
-	client := c.containerProxy.Client()
-
 	handle, err := c.Handle(cid, cname)
 	if err != nil {
 		return nil, err
 	}
 
-	// inspect the Task to obtain ProcessConfig
-	config := &models.TaskInspectConfig{
-		Handle: handle,
-		ID:     eid,
-	}
-
-	params := tasks.NewInspectParamsWithContext(ctx).WithConfig(config)
-	// FIXME: NEEDS CONTAINER PROXY
-	resp, err := client.Tasks.Inspect(params)
-	if err != nil {
-		return nil, err
-	}
-	return resp.Payload, nil
-
+	return c.containerProxy.TaskInspect(handle, eid)
 }
 
 func (c *Container) TaskWaitToStart(cid, cname, eid string) error {
@@ -421,47 +405,36 @@ func (c *Container) ContainerExecStart(ctx context.Context, eid string, stdin io
 	id := vc.ContainerID
 	name := vc.Name
 
-	// FIXME: NEEDS CONTAINER PROXY
-	// grab the task details
-	ec, err := c.TaskInspect(id, name, eid)
-	if err != nil {
-		switch err := err.(type) {
-		case *tasks.InspectInternalServerError:
-			op.Debugf("received an internal server error during task inspect: %s", err.Payload.Message)
-			return InternalServerError(err.Payload.Message)
-		case *tasks.InspectConflict:
-			op.Debugf("received a conflict error during task inspect: %s", err.Payload.Message)
-			return ConflictError(fmt.Sprintf("Cannot complete the operation, container %s has been powered off during execution", id))
-		default:
+	operation := func() error {
+		handle, err := c.Handle(id, name)
+		if err != nil {
+			op.Errorf("Failed to obtain handle during exec start for container(%s) due to error: %s", id, err)
 			return InternalServerError(err.Error())
 		}
-	}
 
-	handle, err := c.Handle(id, name)
-	if err != nil {
-		op.Errorf("Failed to obtain handle during exec start for container(%s) due to error: %s", id, err)
-		return InternalServerError(err.Error())
-	}
+		ec, err := c.containerProxy.TaskInspect(handle, eid)
+		if err != nil {
+			return err
+		}
 
-	bindconfig := &models.TaskBindConfig{
-		Handle: handle,
-		ID:     eid,
-	}
+		bindconfig := &models.TaskBindConfig{
+			Handle: handle,
+			ID:     eid,
+		}
 
-	// obtain a portlayer client
-	client := c.containerProxy.Client()
+		// obtain a portlayer client
+		client := c.containerProxy.Client()
 
-	// call Bind with bindparams
-	bindparams := tasks.NewBindParamsWithContext(ctx).WithConfig(bindconfig)
-	// FIXME: NEEDS CONTAINER PROXY
-	resp, err := client.Tasks.Bind(bindparams)
-	if err != nil {
-		op.Errorf("Failed to bind parameters during exec start for container(%s) due to error: %s", id, err)
-		return InternalServerError(err.Error())
-	}
-	handle = resp.Payload.Handle.(string)
+		// call Bind with bindparams
+		bindparams := tasks.NewBindParamsWithContext(ctx).WithConfig(bindconfig)
+		// FIXME: NEEDS CONTAINER PROXY AND NEW ERROR HANDLING IN THE PROXY
+		resp, err := client.Tasks.Bind(bindparams)
+		if err != nil {
+			op.Errorf("Failed to bind parameters during exec start for container(%s) due to error: %s", id, err)
+			return InternalServerError(err.Error())
+		}
+		handle = resp.Payload.Handle.(string)
 
-	operation := func() error {
 		// exec doesn't have separate attach path so we will decide whether we need interaction/runblocking or not
 		attach := ec.OpenStdin || ec.OpenStdout || ec.OpenStderr
 		if attach {
