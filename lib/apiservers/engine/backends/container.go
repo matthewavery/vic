@@ -261,57 +261,53 @@ func (c *Container) ContainerExecCreate(name string, config *types.ExecConfig) (
 	}
 	id := vc.ContainerID
 
-	// Is it running?
-	state, err := c.containerProxy.State(vc)
-	if err != nil {
-		return "", InternalServerError(err.Error())
-	}
-
-	if state.Restarting {
-		return "", ConflictError(fmt.Sprintf("Container %s is restarting, wait until the container is running", id))
-	}
-	if !state.Running {
-		return "", ConflictError(fmt.Sprintf("Container %s is not running", id))
-	}
-
-	op.Debugf("State checks succeeded for exec operation on cotnainer(%s)", id)
-	handle, err := c.Handle(id, name)
-	if err != nil {
-		op.Error(err)
-		return "", InternalServerError(err.Error())
-	}
-
 	// set up the environment
 	config.Env = setEnvFromImageConfig(config.Tty, config.Env, vc.Config.Env)
 
-	handleprime, eid, err := c.containerProxy.CreateExecTask(handle, config)
-	if err != nil {
-		op.Errorf("Failed to create exec task for container(%s) due to error(%s)", id, err)
-		return "", InternalServerError(err.Error())
+	operation := func() error {
+		// Is it running?
+		state, err := c.containerProxy.State(vc)
+		if err != nil {
+			return "", InternalServerError(err.Error())
+		}
+
+		if state.Restarting {
+			return "", ConflictError(fmt.Sprintf("Container %s is restarting, wait until the container is running", id))
+		}
+		if !state.Running {
+			return "", ConflictError(fmt.Sprintf("Container %s is not running", id))
+		}
+		op.Debugf("State checks succeeded for exec operation on container(%s)", id)
+
+		handle, err := c.Handle(id, name)
+		if err != nil {
+			op.Error(err)
+			return "", InternalServerError(err.Error())
+		}
+
+		handleprime, eid, err := c.containerProxy.CreateExecTask(handle, config)
+		if err != nil {
+			op.Errorf("Failed to create exec task for container(%s) due to error(%s)", id, err)
+			return "", InternalServerError(err.Error())
+		}
+
+		err = c.containerProxy.CommitContainerHandle(handleprime, id, 0)
+		if err != nil {
+			op.Errorf("Failed to commit exec handle for container(%s) due to error(%s)", id, err)
+			return "", err
+		}
+
 	}
 
-	err = c.containerProxy.CommitContainerHandle(handleprime, id, 0)
-	if err != nil {
-		op.Errorf("Failed to commit exec handle for container(%s) due to error(%s)", id, err)
-		return "", err
-	}
+	retry.Do(operation, IsConflictError)
 
 	// associate newly created exec task with container
 	cache.ContainerCache().AddExecToContainer(vc, eid)
 
-	// FIXME: NEEDS CONTAINER PROXY
+	// XXX: Do we even want this here? At this point ExecStart will also fail for the same reasons if it is going to fail...
 	ec, err := c.TaskInspect(id, name, eid)
 	if err != nil {
-		switch err := err.(type) {
-		case *tasks.InspectInternalServerError:
-			op.Debugf("received an internal server error during task inspect: %s", err.Payload.Message)
-			return "", InternalServerError(err.Payload.Message)
-		case *tasks.InspectConflict:
-			op.Debugf("received a conflict error during task inspect: %s", err.Payload.Message)
-			return "", ConflictError(fmt.Sprintf("Cannot complete the operation, container %s has been powered off during execution", id))
-		default:
-			return "", InternalServerError(err.Error())
-		}
+		return error
 	}
 
 	// exec_create event
@@ -451,6 +447,7 @@ func (c *Container) ContainerExecStart(ctx context.Context, eid string, stdin io
 		defer cancel()
 
 		// we do not return an error here if this fails. TODO: Investigate what exactly happens on error here...
+		// FIXME: This being in a retry could lead to multiple writes to stdout(?)
 		go func() {
 			defer trace.End(trace.Begin(eid))
 
@@ -518,6 +515,7 @@ func (c *Container) ContainerExecStart(ctx context.Context, eid string, stdin io
 		}
 		return nil
 	}
+
 	if err := retry.Do(operation, IsConflictError); err != nil {
 		op.Errorf("Failed to start Exec task for container(%s) due to error (%s)", id, err)
 		return err
