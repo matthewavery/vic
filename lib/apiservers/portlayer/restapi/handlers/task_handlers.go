@@ -112,8 +112,6 @@ func (handler *TaskHandlersImpl) JoinHandler(params tasks.JoinParams) middleware
 	return tasks.NewJoinOK().WithPayload(res)
 }
 
-// FIXME: NO MORE LOGGING!!!! DO OP LOGGING!!!!
-
 // BindHandler calls the Bind
 func (handler *TaskHandlersImpl) BindHandler(params tasks.BindParams) middleware.Responder {
 	defer trace.End(trace.Begin(""))
@@ -129,9 +127,17 @@ func (handler *TaskHandlersImpl) BindHandler(params tasks.BindParams) middleware
 	if err != nil {
 		log.Errorf("%s", err.Error())
 
-		return tasks.NewBindInternalServerError().WithPayload(
-			&models.Error{Message: err.Error()},
-		)
+		switch err.(type) {
+		case task.TaskNotFoundError:
+			return tasks.NewBindNotFound().WithPayload(
+				&models.Error{Message: err.Error()},
+			)
+		default:
+			return tasks.NewBindInternalServerError().WithPayload(
+				&models.Error{Message: err.Error()},
+			)
+		}
+
 	}
 
 	res := &models.TaskBindResponse{
@@ -156,9 +162,17 @@ func (handler *TaskHandlersImpl) UnbindHandler(params tasks.UnbindParams) middle
 	if err != nil {
 		log.Errorf("%s", err.Error())
 
-		return tasks.NewUnbindInternalServerError().WithPayload(
-			&models.Error{Message: err.Error()},
-		)
+		switch err.(type) {
+		case task.TaskNotFoundError:
+			return tasks.NewUnbindNotFound().WithPayload(
+				&models.Error{Message: err.Error()},
+			)
+		default:
+			return tasks.NewUnbindInternalServerError().WithPayload(
+				&models.Error{Message: err.Error()},
+			)
+		}
+
 	}
 
 	res := &models.TaskUnbindResponse{
@@ -208,15 +222,16 @@ func (handler *TaskHandlersImpl) InspectHandler(params tasks.InspectParams) midd
 	if err != nil {
 		log.Errorf("%s", err.Error())
 
-		if _, ok := err.(task.TaskPowerStateError); ok {
-			return tasks.NewInspectConflict().WithPayload(
+		switch err.(type) {
+		case task.TaskNotFoundError:
+			return tasks.NewInspectNotFound().WithPayload(
+				&models.Error{Message: err.Error()},
+			)
+		default:
+			return tasks.NewInspectInternalServerError().WithPayload(
 				&models.Error{Message: err.Error()},
 			)
 		}
-
-		return tasks.NewInspectInternalServerError().WithPayload(
-			&models.Error{Message: err.Error()},
-		)
 	}
 
 	op.Debugf("ID: %#v", t.ID)
