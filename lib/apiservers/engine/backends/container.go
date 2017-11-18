@@ -206,19 +206,6 @@ func (c *Container) Handle(id, name string) (string, error) {
 
 // docker's container.execBackend
 
-// FIXME: this returns a docker model, we should avoid this. This is what should be in the container proxy... But we need to confirm that it is not a public endpoint. its return hints that it is not... or that the actual return might be different
-func (c *Container) TaskInspect(cid, cname, eid string) (*models.TaskInspectResponse, error) {
-	defer trace.End(trace.Begin(fmt.Sprintf("cid(%s), cname(%s), eid(%s)", cid, cname, eid)))
-	op := trace.NewOperation(context.Background(), "")
-
-	handle, err := c.Handle(cid, cname)
-	if err != nil {
-		return nil, err
-	}
-
-	return c.containerProxy.InspectTask(op, handle, eid, cid)
-}
-
 func (c *Container) TaskWaitToStart(cid, cname, eid string) error {
 	// obtain a portlayer client
 	client := c.containerProxy.Client()
@@ -264,50 +251,61 @@ func (c *Container) ContainerExecCreate(name string, config *types.ExecConfig) (
 	// set up the environment
 	config.Env = setEnvFromImageConfig(config.Tty, config.Env, vc.Config.Env)
 
+	var eid string
 	operation := func() error {
 		// Is it running?
 		state, err := c.containerProxy.State(vc)
 		if err != nil {
-			return "", InternalServerError(err.Error())
+			return InternalServerError(err.Error())
 		}
 
 		if state.Restarting {
-			return "", ConflictError(fmt.Sprintf("Container %s is restarting, wait until the container is running", id))
+			return ConflictError(fmt.Sprintf("Container %s is restarting, wait until the container is running", id))
 		}
 		if !state.Running {
-			return "", ConflictError(fmt.Sprintf("Container %s is not running", id))
+			return ConflictError(fmt.Sprintf("Container %s is not running", id))
 		}
 		op.Debugf("State checks succeeded for exec operation on container(%s)", id)
 
 		handle, err := c.Handle(id, name)
 		if err != nil {
 			op.Error(err)
-			return "", InternalServerError(err.Error())
+			return InternalServerError(err.Error())
 		}
 
-		handleprime, eid, err := c.containerProxy.CreateExecTask(handle, config)
+		handle, eid, err = c.containerProxy.CreateExecTask(handle, config)
 		if err != nil {
 			op.Errorf("Failed to create exec task for container(%s) due to error(%s)", id, err)
-			return "", InternalServerError(err.Error())
+			return InternalServerError(err.Error())
 		}
 
-		err = c.containerProxy.CommitContainerHandle(handleprime, id, 0)
+		err = c.containerProxy.CommitContainerHandle(handle, id, 0)
 		if err != nil {
 			op.Errorf("Failed to commit exec handle for container(%s) due to error(%s)", id, err)
-			return "", err
+			return err
 		}
 
+		return nil
 	}
 
-	retry.Do(operation, IsConflictError)
+	// FIXME: We cannot necessarily check for IsConflictError here yet since the state check also returns conflict error
+	if err := retry.Do(operation, IsConflictError); err != nil {
+		op.Errorf("Failed to start Exec task for container(%s) due to error (%s)", id, err)
+		return "", err
+	}
 
 	// associate newly created exec task with container
 	cache.ContainerCache().AddExecToContainer(vc, eid)
 
-	// XXX: Do we even want this here? At this point ExecStart will also fail for the same reasons if it is going to fail...
-	ec, err := c.TaskInspect(id, name, eid)
+	handle, err := c.Handle(id, name)
 	if err != nil {
-		return error
+		op.Error(err)
+		return "", InternalServerError(err.Error())
+	}
+
+	ec, err := c.containerProxy.InspectTask(op, handle, eid, id)
+	if err != nil {
+		return "", err
 	}
 
 	// exec_create event
@@ -332,19 +330,15 @@ func (c *Container) ContainerExecInspect(eid string) (*backend.ExecInspect, erro
 	id := vc.ContainerID
 	name := vc.Name
 
-	//FIXME: NEEDS CONTAINER PROXY
-	ec, err := c.TaskInspect(id, name, eid)
+	handle, err := c.Handle(id, name)
 	if err != nil {
-		switch err := err.(type) {
-		case *tasks.InspectInternalServerError:
-			op.Debugf("received an internal server error during task inspect: %s", err.Payload.Message)
-			return nil, InternalServerError(err.Payload.Message)
-		case *tasks.InspectConflict:
-			op.Debugf("received a conflict error during task inspect: %s", err.Payload.Message)
-			return nil, ConflictError(fmt.Sprintf("Cannot complete the operation, container %s has been powered off during execution", id))
-		default:
-			return nil, InternalServerError(err.Error())
-		}
+		op.Error(err)
+		return nil, InternalServerError(err.Error())
+	}
+
+	ec, err := c.containerProxy.InspectTask(op, handle, eid, id)
+	if err != nil {
+		return nil, err
 	}
 
 	exit := int(ec.ExitCode)
