@@ -178,13 +178,8 @@ func (handler *ContainersHandlersImpl) GetStateHandler(params containers.GetStat
 		return containers.NewGetStateNotFound()
 	}
 
-	container := exec.Containers.Container(h.ExecConfig.ID)
-	if container == nil {
-		return containers.NewGetStateNotFound()
-	}
-
 	var state string
-	switch container.CurrentState() {
+	switch h.State {
 	case exec.StateRunning:
 		state = "RUNNING"
 
