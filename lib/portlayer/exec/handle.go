@@ -81,6 +81,9 @@ type Handle struct {
 	// desired state
 	targetState State
 
+	// state at handle creation
+	State State
+
 	// should this change trigger a reload in the target container
 	reload bool
 
@@ -112,6 +115,7 @@ func newHandle(con *Container) *Handle {
 	h := &Handle{
 		key:           newHandleKey(),
 		targetState:   StateUnknown,
+		State:         con.State(),
 		containerBase: *newBase(con.vm, con.Config, con.Runtime),
 		// currently every operation has a spec, because even the power operations
 		// make changes to extraconfig for timestamps and session status
