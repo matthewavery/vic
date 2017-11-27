@@ -253,19 +253,6 @@ func (c *Container) ContainerExecCreate(name string, config *types.ExecConfig) (
 
 	var eid string
 	operation := func() error {
-		// Is it running?
-		state, err := c.containerProxy.State(vc)
-		if err != nil {
-			return InternalServerError(err.Error())
-		}
-
-		if state.Restarting {
-			return ConflictError(fmt.Sprintf("Container %s is restarting, wait until the container is running", id))
-		}
-		if !state.Running {
-			return ConflictError(fmt.Sprintf("Container %s is not running", id))
-		}
-		op.Debugf("State checks succeeded for exec operation on container(%s)", id)
 
 		handle, err := c.Handle(id, name)
 		if err != nil {
@@ -273,6 +260,19 @@ func (c *Container) ContainerExecCreate(name string, config *types.ExecConfig) (
 			return InternalServerError(err.Error())
 		}
 
+		// Is it running?
+		handle, state, err := c.containerProxy.GetStateFromHandle(op, handle)
+		if err != nil {
+			return InternalServerError(err.Error())
+		}
+
+		// NOTE: we should investigate what we can add or manipulate in the handle in the portlayer to make this check even more granular. Maybe Add the actually State into the handle config or part of the container info could be "snapshotted"
+		// This check is now done off of the handle.
+		if state != "RUNNING" {
+			return ConflictError(fmt.Sprintf("Container %s is restarting, wait until the container is running", id))
+		}
+
+		op.Debugf("State checks succeeded for exec operation on container(%s)", id)
 		handle, eid, err = c.containerProxy.CreateExecTask(handle, config)
 		if err != nil {
 			op.Errorf("Failed to create exec task for container(%s) due to error(%s)", id, err)

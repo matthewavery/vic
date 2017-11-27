@@ -103,7 +103,7 @@ type VicContainerProxy interface {
 
 	Stop(vc *viccontainer.VicContainer, name string, seconds *int, unbound bool) error
 	State(vc *viccontainer.VicContainer) (*types.ContainerState, error)
-	GetStateFromHandle(handle string) (*types.ContainerState, error)
+	GetStateFromHandle(op trace.Operation, handle string) (string, string, error)
 	Wait(vc *viccontainer.VicContainer, timeout time.Duration) (*types.ContainerState, error)
 	Signal(vc *viccontainer.VicContainer, sig uint64) error
 	Resize(id string, height, width int32) error
@@ -911,23 +911,23 @@ func (c *ContainerProxy) UnbindContainerFromNetwork(vc *viccontainer.VicContaine
 }
 
 // GetStateFromHandle takes a handle and returns the state of the container based on that handle. Also returns handle that comes back with the response.
-func (c *ContainerProxy) GetStateFromHandle(op trace.Operation, handle string) (string, *types.ContainerState, error) {
+func (c *ContainerProxy) GetStateFromHandle(op trace.Operation, handle string) (string, string, error) {
 	defer trace.End(trace.Begin(fmt.Sprintf("handle(%s)", handle), op))
 
 	params := &containers.GetStateParams{
 		Handle: handle,
 	}
 
-	resp, err := c.client.Containers.GetState(params * containers.GetStateParams)
+	resp, err := c.client.Containers.GetState(params)
 	if err != nil {
 		switch err := err.(type) {
 		case *containers.GetStateNotFound:
-			return handle, nil, NotFoundError(err.Payload.Message)
+			return handle, "", NotFoundError(err.Payload.Message)
 		default:
-			return handle, nil, InternalServerError(err.Error())
+			return handle, "", InternalServerError(err.Error())
 		}
 	}
-	return resp.Payload.Handle, resp.Payload, nil
+	return resp.Payload.Handle, resp.Payload.State, nil
 }
 
 // State returns container state
