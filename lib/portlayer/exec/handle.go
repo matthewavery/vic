@@ -81,9 +81,6 @@ type Handle struct {
 	// desired state
 	targetState State
 
-	// state at handle creation
-	State State
-
 	// should this change trigger a reload in the target container
 	reload bool
 
