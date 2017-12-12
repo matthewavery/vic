@@ -70,6 +70,15 @@ func Commit(op trace.Operation, sess *session.Session, h *Handle, waitTime *int3
 
 		if err != nil {
 			op.Errorf("An error occurred while waiting for a creation operation to complete. Spec was %+v", *h.Spec.Spec())
+
+			if runtimeFault, ok := err.(*types.SystemError); ok {
+				messages := runtimeFault.FaultMessage
+				if len(messages) > 0 {
+					// This should contain an explanation message as to why we saw the SysemError.
+					return fmt.Errorf("%s", messages[0].Message)
+				}
+			}
+
 			return err
 		}
 
