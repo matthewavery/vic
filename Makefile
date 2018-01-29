@@ -18,7 +18,7 @@ GO ?= go
 GOVERSION ?= go1.8
 OS := $(shell uname | tr '[:upper:]' '[:lower:]')
 ifeq (vagrant, $(filter vagrant,$(USER) $(SUDO_USER)))
-	# assuming we are in a shared directory where host arch is different from the guest
+# assuming we are in a shared directory where host arch is different from the guest
 	BIN_ARCH := -$(OS)
 endif
 REV :=$(shell git rev-parse --short=8 HEAD)
@@ -40,9 +40,9 @@ GOVC ?= $(GOPATH)/bin/govc$(BIN_ARCH)
 GAS ?= $(GOPATH)/bin/gas$(BIN_ARCH)
 MISSPELL ?= $(GOPATH)/bin/misspell$(BIN_ARCH)
 
-.PHONY: all tools clean test check distro \
+.PHONY: all all-test tools clean test check distro \
 	goversion goimports gopath govet gofmt misspell gas golint \
-	isos tethers apiservers copyright
+	isos isos-test tethers apiservers apiservers-test copyright
 
 .DEFAULT_GOAL := all
 
@@ -112,6 +112,7 @@ gandalf := $(BIN)/gandalf
 tether-linux := $(BIN)/tether-linux
 
 appliance := $(BIN)/appliance.iso
+appliance-test := $(BIN)/appliance-test.iso
 appliance-staging := $(BIN)/.appliance-staging.tgz
 bootstrap := $(BIN)/bootstrap.iso
 bootstrap-staging := $(BIN)/.bootstrap-staging.tgz
@@ -121,9 +122,7 @@ iso-base := $(BIN)/.iso-base.tgz
 
 # target aliases - target mapping
 docker-engine-api: $(docker-engine-api)
-docker-engine-api-test: $(docker-engine-api-test)
 portlayerapi: $(portlayerapi)
-portlayerapi-test: $(portlayerapi-test)
 portlayerapi-client: $(portlayerapi-client)
 portlayerapi-server: $(portlayerapi-server)
 serviceapi: $(serviceapi)
@@ -165,6 +164,15 @@ apiservers: $(portlayerapi) $(docker-engine-api) $(serviceapi)
 components: check apiservers $(vicadmin) $(rpctool)
 isos: $(appliance) $(bootstrap)
 tethers: $(tether-linux)
+
+# TEST BUILD TARGETS
+all-test: components-test tethers isos-test vic-machine imagec vic-ui
+components-test: check apiservers-test $(vicadmin) $(rpctool)
+# TODO: add a serviceapi-test target
+apiservers-test: $(portlayerapi-test) $(docker-egnine-api-test) $(serviceapi)
+portlayerapi-test: $(portlayerapi-test)
+docker-engine-api-test: $(docker-engine-api-test)
+isos-test: $(appliance-test) $(bootstrap)
 
 most: $(portlayerapi) $(docker-engine-api) $(vicadmin) $(tether-linux) $(appliance) $(bootstrap) $(vic-machine-linux) $(serviceapi)
 
@@ -360,7 +368,7 @@ $(portlayerapi): $(portlayerapi-server) $(portlayerapi-client) $$(call godeps,cm
 	@echo building Portlayer API server...
 	@$(TIME) $(GO) build $(RACE) -ldflags "$(LDFLAGS)" -o $@ ./cmd/port-layer-server
 
-$(portlayerapi-test): $$(call godeps,cmd/port-layer-server/*.go) $(portlayerapi-server) $(portlayerapi-client)
+$(portlayerapi-test): $(portlayerapi-server) $(portlayerapi-client) $$(call godeps,cmd/port-layer-server/*.go)
 	@echo building Portlayer API server for test...
 	@$(TIME) $(GO) test -c -coverpkg github.com/vmware/vic/lib/...,github.com/vmware/vic/pkg/... -coverprofile port-layer-server.cov -outputdir /tmp -o $@ ./cmd/port-layer-server
 
@@ -392,6 +400,10 @@ $(appliance-staging): isos/appliance-staging.sh $(iso-base)
 $(appliance): isos/appliance.sh isos/appliance/* isos/vicadmin/** $(vicadmin) $(vic-init) $(portlayerapi) $(docker-engine-api) $(appliance-staging) $(archive)
 	@echo building VCH appliance ISO
 	@$(TIME) $< -p $(appliance-staging) -b $(BIN)
+
+$(appliance-test): isos/appliance.sh isos/appliance/* isos/vicadmin/** $(vicadmin) $(vic-init-test) $(portlayerapi-test) $(docker-engine-api-test) $(appliance-staging) $(archive)
+	@echo building VCH Test Appliance ISO
+	@$(TIME) $< -p $(appliance-staging) -b $(BIN) -t true
 
 # main bootstrap target
 $(bootstrap): isos/bootstrap.sh $(tether-linux) $(bootstrap-staging) isos/bootstrap/*

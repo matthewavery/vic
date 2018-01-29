@@ -26,7 +26,7 @@ echo "Usage: $0 -p staged-package(tgz) -b binary-dir" 1>&2
 exit 1
 }
 
-while getopts "p:b:" flag
+while getopts "p:b:t:" flag
 do
     case $flag in
 
@@ -38,6 +38,11 @@ do
         b)
             # Required. Target for iso and source for components
             BIN="$OPTARG"
+            ;;
+
+        t)
+            # Optional. Indicates that test binaries are to be copied in place of the standard binaries.
+            TEST=1
             ;;
 
         *)
@@ -121,11 +126,26 @@ chroot $(rootfs_dir $PKGDIR) chmod 0660 /var/run/lock/logrotate_run.lock
 
 ## main VIC components
 # tether based init
-cp ${BIN}/vic-init $(rootfs_dir $PKGDIR)/sbin/vic-init
 
-cp ${BIN}/{docker-engine-server,port-layer-server,vicadmin} $(rootfs_dir $PKGDIR)/sbin/
+if [ $TEST ]
+then
+    # we must be sure that the test enabled binaries are named the same at this point.
+    cp ${BIN}/vic-init-test $(rootfs_dir $PKGDIR)/sbin/vic-init
+    cp ${BIN}/docker-engine-server-test $(rootfs_dir $PKGDIR)/sbin/docker-engine-server
+    cp ${BIN}/port-layer-server-test $(rootfs_dir $PKGDIR)/sbin/port-layer-server
+    # TODO: make a vicadm test component if we want to enable this style of testing.
+    cp ${BIN}/vicadmin $(rootfs_dir $PKGDIR)/sbin/
+else
+    cp ${BIN}/vic-init $(rootfs_dir $PKGDIR)/sbin/vic-init
+    cp ${BIN}/{docker-engine-server,port-layer-server,vicadmin} $(rootfs_dir $PKGDIR)/sbin/
+fi
 cp ${BIN}/unpack $(rootfs_dir $PKGDIR)/bin/
 
 ## Generate the ISO
 # Select systemd for our init process
-generate_iso $PKGDIR $BIN/appliance.iso /lib/systemd/systemd
+if [ $TEST ]
+then
+    generate_iso $PKGDIR $BIN/appliance-test.iso /lib/systemd/systemd
+else
+    generate_iso $PKGDIR $BIN/appliance.iso /lib/systemd/systemd
+fi
