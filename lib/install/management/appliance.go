@@ -66,7 +66,42 @@ const (
 var (
 	lastSeenProgressMessage string
 	unitNumber              int32
+
+	// port-layer-server launch config
+	PortlayerPath string
+	PortlayerArgs []string
+	PortlayerEnv  []string
+
+	// docker-engine-server launch config
+	DockerPersonalityPath string
+	DockerPersonalityArgs []string
+	DockerPersonalityEnv  []string
 )
+
+func init() {
+
+	// configure initial portlayer launch config
+	PortlayerPath = "/sbin/port-layer-server"
+	PortlayerArgs = []string{
+		"/sbin/port-layer-server",
+		"--host=localhost",
+		fmt.Sprintf("--port=%d", portLayerPort),
+	}
+
+	// configure initial Docker Personality launch config
+	DockerPersonalityPath = "/sbin/docker-engine-server"
+	DockerPersonalityArgs = []string{
+		"/sbin/docker-engine-server",
+		//FIXME: hack during config migration
+		fmt.Sprintf("-port-layer-port=%d", portLayerPort),
+	}
+	DockerPersonalityEnv = []string{
+		"PATH=/sbin",
+		"GOTRACEBACK=all",
+	}
+
+	// configure initial vicadmin launch config
+}
 
 func (d *Dispatcher) isVCH(vm *vm.VirtualMachine) (bool, error) {
 	if vm == nil {
@@ -575,18 +610,13 @@ func (d *Dispatcher) createAppliance(conf *config.VirtualContainerHostConfigSpec
 
 	d.setDockerPort(conf, settings)
 
+	// Add runtime config for docker personality
+	DockerPersonalityArgs = append(DockerPersonalityArgs, "-port="+d.DockerPort)
+
 	personality := executor.Cmd{
-		Path: "/sbin/docker-engine-server",
-		Args: []string{
-			"/sbin/docker-engine-server",
-			//FIXME: hack during config migration
-			"-port=" + d.DockerPort,
-			fmt.Sprintf("-port-layer-port=%d", portLayerPort),
-		},
-		Env: []string{
-			"PATH=/sbin",
-			"GOTRACEBACK=all",
-		},
+		Path: DockerPersonalityPath,
+		Args: DockerPersonalityArgs,
+		Env:  DockerPersonalityEnv,
 	}
 	if settings.HTTPProxy != nil {
 		personality.Env = append(personality.Env, fmt.Sprintf("%s=%s", config.GeneralHTTPProxy, settings.HTTPProxy.String()))
@@ -605,28 +635,24 @@ func (d *Dispatcher) createAppliance(conf *config.VirtualContainerHostConfigSpec
 	},
 	)
 
-	cfg := &executor.SessionConfig{
+	// add runtime config for portlayer
+	PortlayerEnv = append(PortlayerEnv, "VC_URL="+conf.Target)
+	PortlayerEnv = append(PortlayerEnv, "DC_PATH="+settings.DatacenterName)
+	PortlayerEnv = append(PortlayerEnv, "CS_PATH="+settings.ClusterPath)
+	PortlayerEnv = append(PortlayerEnv, "POOL_PATH="+settings.ResourcePoolPath)
+	PortlayerEnv = append(PortlayerEnv, "DS_PATH="+conf.ImageStores[0].Host)
+
+	portlayer := &executor.SessionConfig{
 		Cmd: executor.Cmd{
-			Path: "/sbin/port-layer-server",
-			Args: []string{
-				"/sbin/port-layer-server",
-				"--host=localhost",
-				fmt.Sprintf("--port=%d", portLayerPort),
-			},
-			Env: []string{
-				//FIXME: hack during config migration
-				"VC_URL=" + conf.Target,
-				"DC_PATH=" + settings.DatacenterName,
-				"CS_PATH=" + settings.ClusterPath,
-				"POOL_PATH=" + settings.ResourcePoolPath,
-				"DS_PATH=" + conf.ImageStores[0].Host,
-			},
+			Path: PortlayerPath,
+			Args: PortlayerArgs,
+			Env:  PortlayerEnv,
 		},
 		Restart: true,
 		Active:  true,
 	}
 
-	conf.AddComponent(config.PortLayerService, cfg)
+	conf.AddComponent(config.PortLayerService, portlayer)
 
 	// fix up those parts of the config that depend on the final applianceVM folder name
 	conf.BootstrapImagePath = fmt.Sprintf("[%s] %s/%s", conf.ImageStores[0].Host, d.vmPathName, settings.BootstrapISO)

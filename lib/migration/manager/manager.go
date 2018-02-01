@@ -69,6 +69,8 @@ func NewDataMigrator() DataMigration {
 // Register plugin to data migration system
 func (m *DataMigrator) Register(ver int, target string, plugin Plugin) error {
 	defer trace.End(trace.Begin(fmt.Sprintf("plugin %s:%d", target, ver)))
+
+	log.Debugf("Attempting to Register Plugin(%s) with vers(%d)", target, ver)
 	// assert if plugin version less than max plugin version, which is forcing deveoper to change MaxPluginVersion variable everytime new plugin is added
 	if plugin == nil {
 		return &errors.InternalError{
@@ -83,7 +85,7 @@ func (m *DataMigrator) Register(ver int, target string, plugin Plugin) error {
 
 	if m.verPlugins[ver] != nil {
 		return &errors.InternalError{
-			Message: fmt.Sprintf("Plugin %d is conflict with another plugin, please make sure the plugin Version is unique and ascending", ver),
+			Message: fmt.Sprintf("Plugin %d is conflict with another plugin, please make sure the plugin Version is unique and ascending: target=%s", ver, target),
 		}
 	}
 	m.targetVers[target] = append(m.targetVers[target], ver)

@@ -1,0 +1,2 @@
+#!/bin/bash
+exec env /sbin/port-layer-server-test ${@:1} --systemTest true --test.coverprofile port-layer-server.cov

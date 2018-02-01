@@ -84,7 +84,7 @@ docker-engine-api := $(BIN)/docker-engine-server
 docker-engine-api-test := $(BIN)/docker-engine-server-test
 admiralapi-client := lib/config/dynamic/admiral/client/admiral_client.go
 portlayerapi := $(BIN)/port-layer-server
-portlayerapi-test := $(BIN)/port-layer-server-test
+portlayerapi-coverage := $(BIN)/port-layer-server-coverage
 portlayerapi-client := lib/apiservers/portlayer/client/port_layer_client.go
 portlayerapi-server := lib/apiservers/portlayer/restapi/server.go
 serviceapi := $(BIN)/vic-machine-server
@@ -100,7 +100,7 @@ vic-ui-linux := $(BIN)/vic-ui-linux
 vic-ui-windows := $(BIN)/vic-ui-windows.exe
 vic-ui-darwin := $(BIN)/vic-ui-darwin
 vic-init := $(BIN)/vic-init
-vic-init-test := $(BIN)/vic-init-test
+vic-init-coverage := $(BIN)/vic-init-coverage
 # NOT BUILT WITH make all TARGET
 # vic-dns variants to create standalone DNS service.
 vic-dns-linux := $(BIN)/vic-dns-linux
@@ -124,7 +124,6 @@ iso-base := $(BIN)/.iso-base.tgz
 docker-engine-api: $(docker-engine-api)
 docker-engine-api-test: $(docker-engine-api-test)
 portlayerapi: $(portlayerapi)
-portlayerapi-test: $(portlayerapi-test)
 portlayerapi-client: $(portlayerapi-client)
 portlayerapi-server: $(portlayerapi-server)
 serviceapi: $(serviceapi)
@@ -135,7 +134,7 @@ imagec: $(imagec)
 vicadmin: $(vicadmin)
 rpctool: $(rpctool)
 vic-init: $(vic-init)
-vic-init-test: $(vic-init-test)
+vic-init-coverage: $(vic-init-coverage)
 
 tether-linux: $(tether-linux)
 
@@ -171,8 +170,8 @@ tethers: $(tether-linux)
 all-test: components-test tethers isos-test vic-machine imagec vic-ui
 components-test: check apiservers-test $(vicadmin) $(rpctool)
 # TODO: add a serviceapi-test target
-apiservers-test: $(portlayerapi-test) $(docker-egnine-api-test) $(serviceapi)
-portlayerapi-test: $(portlayerapi-test)
+apiservers-test: $(portlayerapi-coverage) $(docker-egnine-api-test) $(serviceapi)
+portlayerapi-coverage: $(portlayerapi-coverage)
 docker-engine-api-test: $(docker-engine-api-test)
 isos-test: $(appliance-test) $(bootstrap)
 
@@ -302,13 +301,9 @@ $(vic-init): $$(call godeps,cmd/vic-init/*.go)
 	@echo building vic-init
 	@CGO_ENABLED=1 GOOS=linux GOARCH=amd64 $(GO) build $(RACE) -ldflags "$(LDFLAGS)" -tags netgo -installsuffix netgo -o ./$@ ./$(dir $<)
 
-$(vic-init-test): $$(call godeps,cmd/vic-init/*.go)
-	@echo building vic-init-test
-	@CGO_ENABLED=1 GOOS=linux GOARCH=amd64 $(GO) test -c -coverpkg github.com/vmware/vic/lib/...,github.com/vmware/vic/pkg/... -outputdir /tmp -coverprofile init.cov -o ./$@ ./$(dir $<)
-
-$(vic-init-test): $$(call godeps,cmd/vic-init/*.go)
-	@echo building vic-init-test
-	@CGO_ENABLED=1 GOOS=linux GOARCH=amd64 $(GO) test -c -coverpkg github.com/vmware/vic/lib/...,github.com/vmware/vic/pkg/... -outputdir /tmp -coverprofile init.cov -o ./$@ ./$(dir $<)
+$(vic-init-coverage): $$(call godeps,cmd/vic-init/*.go)
+	@echo building vic-init-coverage
+	@CGO_ENABLED=1 GOOS=linux GOARCH=amd64 $(GO) test -ldflags "$(LDFLAGS)" -v -c -coverpkg github.com/vmware/vic/cmd/vic-init/... -run TestSystem -outputdir /tmp -coverprofile init.cov -o ./$@ ./$(dir $<)
 
 $(tether-linux): $$(call godeps,cmd/tether/*.go)
 	@echo building tether-linux
@@ -374,9 +369,9 @@ $(portlayerapi): $(portlayerapi-server) $(portlayerapi-client) $$(call godeps,cm
 	@echo building Portlayer API server...
 	@$(TIME) $(GO) build $(RACE) -ldflags "$(LDFLAGS)" -o $@ ./cmd/port-layer-server
 
-$(portlayerapi-test): $(portlayerapi-server) $(portlayerapi-client) $$(call godeps,cmd/port-layer-server/*.go)
+$(portlayerapi-coverage): $(portlayerapi-server) $(portlayerapi-client) $$(call godeps,cmd/port-layer-server/*.go)
 	@echo building Portlayer API server for test...
-	@$(TIME) $(GO) test -c -coverpkg github.com/vmware/vic/lib/...,github.com/vmware/vic/pkg/... -coverprofile port-layer-server.cov -outputdir /tmp -o $@ ./cmd/port-layer-server
+	@$(TIME) $(GO) test -ldflags "$(LDFLAGS)" -v -c -cover -covermode=count -coverpkg github.com/vmware/vic/cmd/port-layer-server/... -coverprofile port-layer-server.cov -run TestSystem -outputdir /tmp -o $@ ./cmd/port-layer-server
 
 # Common service dependencies between client and server
 SERVICE_DEPS ?= lib/apiservers/service/swagger.json \
@@ -392,11 +387,6 @@ $(serviceapi): $$(call godeps,cmd/vic-machine-server/*.go) $(serviceapi-server)
 	@echo building vic-machine-as-a-service API server...
 	@$(TIME) $(GO) build $(RACE) -ldflags "$(LDFLAGS)" -o $@ ./cmd/vic-machine-server
 
-
-$(portlayerapi-test): $$(call godeps,cmd/port-layer-server/*.go) $(portlayerapi-server) $(portlayerapi-client)
-	@echo building Portlayer API server for test...
-	@$(TIME) $(GO) test -c -coverpkg github.com/vmware/vic/lib/...,github.com/vmware/vic/pkg/... -coverprofile port-layer-server.cov -outputdir /tmp -o $@ ./cmd/port-layer-server
-
 $(iso-base): isos/base.sh isos/base/*.repo isos/base/isolinux/** isos/base/xorriso-options.cfg
 	@echo building iso-base docker image
 	@$(TIME) $< -c $(BIN)/.yum-cache.tgz -p $@
@@ -411,7 +401,7 @@ $(appliance): isos/appliance.sh isos/appliance/* isos/vicadmin/** $(vicadmin) $(
 	@echo building VCH appliance ISO
 	@$(TIME) $< -p $(appliance-staging) -b $(BIN)
 
-$(appliance-test): isos/appliance.sh isos/appliance/* isos/vicadmin/** $(vicadmin) $(vic-init-test) $(portlayerapi-test) $(docker-engine-api-test) $(appliance-staging) $(archive)
+$(appliance-test): isos/appliance.sh isos/appliance/* isos/vicadmin/** $(vicadmin) $(vic-init-coverage) $(portlayerapi-coverage) $(docker-engine-api) $(appliance-staging) $(archive)
 	@echo building VCH Test Appliance ISO
 	@$(TIME) $< -p $(appliance-staging) -b $(BIN) -t true
 

@@ -78,6 +78,7 @@ cp ${DIR}/appliance/*.service $(rootfs_dir $PKGDIR)/etc/systemd/system/
 cp ${DIR}/appliance/*-setup $(rootfs_dir $PKGDIR)/etc/systemd/scripts
 
 mkdir -p $(rootfs_dir $PKGDIR)/etc/systemd/system/vic.target.wants
+
 ln -s /etc/systemd/system/vic-init.service $(rootfs_dir $PKGDIR)/etc/systemd/system/vic.target.wants/
 ln -s /etc/systemd/system/nat.service $(rootfs_dir $PKGDIR)/etc/systemd/system/vic.target.wants/
 ln -s /etc/systemd/system/permissions.service $(rootfs_dir $PKGDIR)/etc/systemd/system/vic.target.wants/
@@ -129,23 +130,29 @@ chroot $(rootfs_dir $PKGDIR) chmod 0660 /var/run/lock/logrotate_run.lock
 
 if [ $TEST ]
 then
+    echo Copying Coverage binaries into ISO rootfs
+    # overwrite standard vic-init with the vic-init-coverage service file
+    cp ${DIR}/appliance/vic-init-coverage.service $(rootfs_dir $PKGDIR)/etc/systemd/system/vic-init.service
+
     # we must be sure that the test enabled binaries are named the same at this point.
-    cp ${BIN}/vic-init-test $(rootfs_dir $PKGDIR)/sbin/vic-init
-    cp ${BIN}/docker-engine-server-test $(rootfs_dir $PKGDIR)/sbin/docker-engine-server
-    cp ${BIN}/port-layer-server-test $(rootfs_dir $PKGDIR)/sbin/port-layer-server
+    cp ${BIN}/port-layer-server-coverage $(rootfs_dir $PKGDIR)/sbin/port-layer-server
+    cp ${BIN}/vic-init-coverage $(rootfs_dir $PKGDIR)/sbin/vic-init
+
     # TODO: make a vicadm test component if we want to enable this style of testing.
-    cp ${BIN}/vicadmin $(rootfs_dir $PKGDIR)/sbin/
+    cp ${BIN}/{docker-engine-server,vicadmin} $(rootfs_dir $PKGDIR)/sbin/
 else
-    cp ${BIN}/vic-init $(rootfs_dir $PKGDIR)/sbin/vic-init
-    cp ${BIN}/{docker-engine-server,port-layer-server,vicadmin} $(rootfs_dir $PKGDIR)/sbin/
+    echo Copying Standard binaries into ISO rootfs
+    cp ${BIN}/{docker-engine-server,port-layer-server,vicadmin,vic-init} $(rootfs_dir $PKGDIR)/sbin/
 fi
 cp ${BIN}/unpack $(rootfs_dir $PKGDIR)/bin/
 
 ## Generate the ISO
 # Select systemd for our init process
-if [ $TEST ]
-then
-    generate_iso $PKGDIR $BIN/appliance-test.iso /lib/systemd/systemd
-else
+#if [ $TEST ]
+#then
+#    echo Generating Appliance-coverage ISO
+#    generate_iso $PKGDIR $BIN/appliance-test.iso /lib/systemd/systemd
+#else
+    echo Generating Appliance ISO
     generate_iso $PKGDIR $BIN/appliance.iso /lib/systemd/systemd
-fi
+#fi

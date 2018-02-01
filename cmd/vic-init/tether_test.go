@@ -1,4 +1,4 @@
-// Copyright 2016 VMware, Inc. All Rights Reserved.
+// Copyright 2016-2018 VMware, Inc. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,7 +31,6 @@ import (
 
 	"github.com/vmware/govmomi/vim25/types"
 	"github.com/vmware/vic/lib/config/executor"
-	"github.com/vmware/vic/lib/system"
 	"github.com/vmware/vic/lib/tether"
 	"github.com/vmware/vic/pkg/dio"
 	"github.com/vmware/vic/pkg/trace"
@@ -186,26 +185,6 @@ func (t *Mocker) LaunchUtility(fn tether.UtilityFn) (<-chan int, error) {
 func (t *Mocker) HandleUtilityExit(pid, exitCode int) bool {
 	return t.Base.HandleUtilityExit(pid, exitCode)
 }
-
-// TestMain simply so we have control of debugging level and somewhere to call package wide test setup
-func TestMain(m *testing.M) {
-	log.SetLevel(log.DebugLevel)
-	trace.Logger = log.StandardLogger()
-
-	// replace the Sys variable with a mock
-	tether.Sys = system.System{
-		Hosts:      &tether.MockHosts{},
-		ResolvConf: &tether.MockResolvConf{},
-		Syscall:    &tether.MockSyscall{},
-		Root:       os.TempDir(),
-	}
-
-	retCode := m.Run()
-
-	// call with result of m.Run()
-	os.Exit(retCode)
-}
-
 func StartTether(t *testing.T, cfg *executor.ExecutorConfig) (tether.Tether, extraconfig.DataSource) {
 	store := extraconfig.New()
 	sink := store.Put

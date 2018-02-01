@@ -45,13 +45,8 @@ var (
 )
 
 func init() {
-	pprof.StartPprof("portlayer server", pprof.PortlayerPort)
 	options = dns.ServerOptions{}
-	parser  *flags.Parser
-	server  *restapi.Server
-)
 
-func init() {
 	log.SetFormatter(viclog.NewTextFormatter())
 
 	swaggerSpec, err := loads.Analyzed(restapi.SwaggerJSON, "")
@@ -77,10 +72,6 @@ func init() {
 }
 
 func main() {
-
-}
-
-func main() {
 	if _, err := parser.Parse(); err != nil {
 		if err := err.(*flags.Error); err != nil && err.Type == flags.ErrHelp {
 			os.Exit(0)
@@ -89,6 +80,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	pprof.StartPprof("portlayer server", pprof.PortlayerPort)
 	// load the vch config
 	src, err := extraconfig.GuestInfoSource()
 	if err != nil {

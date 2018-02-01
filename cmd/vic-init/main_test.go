@@ -15,15 +15,8 @@
 package main
 
 import (
-	"flag"
 	"testing"
 )
-
-var systemTest *bool
-
-func init() {
-	systemTest = flag.Bool("systemTest", false, "Run system test")
-}
 
 func TestSystem(t *testing.T) {
 	if *systemTest {

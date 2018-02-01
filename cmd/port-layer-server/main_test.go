@@ -64,7 +64,7 @@ var testOpts testOptions
 var testGroup *flags.Group
 
 func init() {
-	systemTest = flag.Bool("systemTest", false, "Run system test")
+	systemTest = flag.Bool("systemtest", false, "Run system test")
 }
 
 // addDash adds an extra dash to long options
@@ -79,7 +79,7 @@ func addDash(s string) string {
 	return s
 }
 
-func TestMain(m *testing.M) {
+func NotTestMain(m *testing.M) {
 	// make sure all single dash arguments
 	// are converted to using double dashes
 	// to make them parseable by the go-flags
@@ -130,11 +130,9 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestSystem(t *testing.T) {
+func TestMain(m *testing.M) {
 	if *systemTest {
 		// add the test options to the default parser
-		parser.AddGroup("go test Options", "go test Options", &testOpts)
-
 		main()
 	}
 }
