@@ -18,19 +18,19 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/vmware/govmomi/find"
+	// "github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/types"
 	"github.com/vmware/vic/lib/config"
 	"github.com/vmware/vic/lib/install/validate"
 	"github.com/vmware/vic/lib/migration"
 	"github.com/vmware/vic/pkg/errors"
-	"github.com/vmware/vic/pkg/retry"
+	// "github.com/vmware/vic/pkg/retry"
 	"github.com/vmware/vic/pkg/trace"
 	"github.com/vmware/vic/pkg/vsphere/compute"
 	"github.com/vmware/vic/pkg/vsphere/extraconfig"
 	"github.com/vmware/vic/pkg/vsphere/extraconfig/vmomi"
-	"github.com/vmware/vic/pkg/vsphere/tasks"
+	// "github.com/vmware/vic/pkg/vsphere/tasks"
 	"github.com/vmware/vic/pkg/vsphere/vm"
 )
 
@@ -292,27 +292,27 @@ func (d *Dispatcher) searchVCHsPerDC(dc *object.Datacenter) ([]*vm.VirtualMachin
 
 // listResourcePool outputs a list of all resource pools under a compute path
 // retries on ObjectNotFound error because sometimes it's due to concurrent modifications of resource pools
-func (d *Dispatcher) listResourcePools(path string) ([]*object.ResourcePool, error) {
-	pools, err := d.session.Finder.ResourcePoolList(d.op, path)
-
+func (d *Dispatcher) listResourcePools(path string) ([]*object.ComputeResource, error) {
+	// pools, err := d.session.Finder.ResourcePoolList(d.op, path)
+	return d.session.Finder.ComputeResourceList(d.op, path)
 	// under some circumstances, such as when there is concurrent vic-machine delete operation running in the background,
 	// listing resource pools might fail because some VCH pool is being destroyed at the same time.
 	// If that happens, we retry and list pools again
-	err = retry.Do(func() error {
-		pools, err = d.session.Finder.ResourcePoolList(d.op, path)
-		if _, ok := err.(*find.NotFoundError); ok {
-			return nil
-		}
-		return err
-	}, func(err error) bool {
-		return tasks.IsTransientError(d.op, err) || tasks.IsNotFoundError(err)
-	})
+	// err = retry.Do(func() error {
+	// 	pools, err = d.session.Finder.ResourcePoolList(d.op, path)
+	// 	if _, ok := err.(*find.NotFoundError); ok {
+	// 		return nil
+	// 	}
+	// 	return err
+	// }, func(err error) bool {
+	// 	return tasks.IsTransientError(d.op, err) || tasks.IsNotFoundError(err)
+	// })
 
-	return pools, err
+	// return pools, err
 }
 
 // searchVCHsFromPools outputs all VCH VMs under the pools specified in the list in the argument.
-func (d *Dispatcher) searchVCHsFromPools(pools []*object.ResourcePool) []*vm.VirtualMachine {
+func (d *Dispatcher) searchVCHsFromPools(pools []*object.ComputeResource) []*vm.VirtualMachine {
 	var vchs []*vm.VirtualMachine
 	for _, pool := range pools {
 		children, err := d.getChildVCHs(pool, true)
@@ -329,44 +329,89 @@ func (d *Dispatcher) searchVCHsFromPools(pools []*object.ResourcePool) []*vm.Vir
 
 // getVCHs will check vm with same name under this resource pool, to see if that's VCH vm, and it will also check children vApp, to see if that's a VCH.
 // eventually return all fond VCH VMs
-func (d *Dispatcher) getChildVCHs(pool *object.ResourcePool, searchVapp bool) ([]*vm.VirtualMachine, error) {
+func (d *Dispatcher) getChildVCHs(pool *object.ComputeResource, searchVapp bool) ([]*vm.VirtualMachine, error) {
 	defer trace.End(trace.Begin(pool.InventoryPath, d.op))
+	if pool.Reference().Type == "VirtualApp" {
+		d.op.Infof("We've got a vApp")
+	}
 
 	// check if pool itself contains VCH vm.
 	var vchs []*vm.VirtualMachine
+	var vms []*vm.VirtualMachine
+	var err error
+	drsEnabled := true
 	poolName := pool.Name()
-	computeResource := compute.NewResourcePool(d.op, d.session, pool.Reference())
-	vmm, err := computeResource.GetChildVM(d.op, d.session, poolName)
-	if err != nil {
-		return nil, errors.Errorf("Failed to query children VM in resource pool %q: %s", pool.InventoryPath, err)
-	}
-	if vmm != nil {
-		vmm.InventoryPath = path.Join(pool.InventoryPath, poolName)
-		// #nosec: Errors unhandled.
-		if ok, _ := d.isVCH(vmm); ok {
-			d.op.Debugf("%q is VCH", vmm.InventoryPath)
-			vchs = append(vchs, vmm)
+	d.op.Infof("PoolName: %s", poolName)
+	if pool.Reference().Type == "ClusterComputeResource" {
+		d.op.Infof("We've got a Cluster...")
+		c := object.NewComputeResource(d.session.Vim25(), pool.Reference())
+		// check DRS
+		cls := compute.NewCluster(*c)
+		if cls != nil {
+			drsEnabled, err = cls.DRSEnabled(d.op)
+			if err != nil {
+				d.op.Errorf("ClusterError: %s", err)
+				return vchs, err
+			}
 		}
+		d.op.Infof("DRS Status: %t", drsEnabled)
 	}
-
-	if !searchVapp {
+	// compute
+	d.op.Infof("ComputeRef: %s", pool.Reference().String())
+	p, err := pool.ResourcePool(d.op)
+	if err != nil {
+		d.op.Errorf("Can't get pool: %s", err)
 		return vchs, nil
 	}
-
-	vappPath := path.Join(pool.InventoryPath, "*")
-	vapps, err := d.session.Finder.VirtualAppList(d.op, vappPath)
-	if err != nil {
-		if _, ok := err.(*find.NotFoundError); ok {
-			return vchs, nil
-		}
-		d.op.Debugf("Failed to query vapp %q: %s", vappPath, err)
-	}
-	for _, vapp := range vapps {
-		childVCHs, err := d.getChildVCHs(vapp.ResourcePool, false)
+	d.op.Infof("PoolRef: %s", p.Reference().String())
+	d.op.Infof("Pool path: %s", p.InventoryPath)
+	d.op.Infof("PoolType: %s", p.Reference().Type)
+	computeResource := compute.NewResourcePool(d.op, d.session, p.Reference())
+	if !drsEnabled {
+		d.op.Infof("Children")
+		// drs disabled so only the cluster resource pool -- we must get the children
+		vms, err = computeResource.GetChildrenVMs(d.op, d.session)
 		if err != nil {
-			return nil, err
+			return vchs, err
 		}
-		vchs = append(vchs, childVCHs...)
+	} else {
+		d.op.Infof("Named VM")
+		vmm, err := computeResource.GetChildVM(d.op, d.session, computeResource.Name())
+		if err != nil {
+			return nil, errors.Errorf("Failed to query children VM in resource pool %q: %s", pool.InventoryPath, err)
+		}
+		if vmm != nil {
+			vms = append(vms, vmm)
+		}
+	}
+	d.op.Infof("VMS(%d) in %s", len(vms), computeResource.InventoryPath)
+	for _, vm := range vms {
+		//vm.InventoryPath = path.Join(pool.InventoryPath, poolName)
+		// #nosec: Errors unhandled.
+		if ok, _ := d.isVCH(vm); ok {
+			d.op.Infof("%q is VCH", vm.Reference())
+			vchs = append(vchs, vm)
+		}
 	}
 	return vchs, nil
+	// if !searchVapp {
+	// 	return vchs, nil
+	// }
+
+	// vappPath := path.Join(pool.InventoryPath, "*")
+	// vapps, err := d.session.Finder.VirtualAppList(d.op, vappPath)
+	// if err != nil {
+	// 	if _, ok := err.(*find.NotFoundError); ok {
+	// 		return vchs, nil
+	// 	}
+	// 	d.op.Debugf("Failed to query vapp %q: %s", vappPath, err)
+	// }
+	// for _, vapp := range vapps {
+	// 	childVCHs, err := d.getChildVCHs(vapp.ResourcePool, false)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	vchs = append(vchs, childVCHs...)
+	// }
+	// return vchs, nil
 }
