@@ -234,6 +234,10 @@ func (d *Dispatcher) FetchAndMigrateVCHConfig(vm *vm.VirtualMachine) (*config.Vi
 
 func (d *Dispatcher) SearchVCHs(computePath string) ([]*vm.VirtualMachine, error) {
 	defer trace.End(trace.Begin(computePath, d.op))
+	if dc == nil {
+
+	}
+
 	if computePath != "" {
 		return d.searchVCHsFromComputePath(computePath)
 	}
@@ -314,7 +318,36 @@ func (d *Dispatcher) listResourcePools(path string) ([]*object.ComputeResource, 
 // searchVCHsFromPools outputs all VCH VMs under the pools specified in the list in the argument.
 func (d *Dispatcher) searchVCHsFromPools(pools []*object.ComputeResource) []*vm.VirtualMachine {
 	var vchs []*vm.VirtualMachine
+	crs := d.session.Finder.ComputeResourceList(d.op, path)
 	for _, pool := range pools {
+		drsEnabled := true
+		d.op.Infof("CR Path: %s", pool.InventoryPath)
+		if pool.Reference().Type == "ClusterComputeResource" {
+			d.op.Infof("We've got a Cluster...")
+			c := object.NewComputeResource(d.session.Vim25(), pool.Reference())
+			// check DRS
+			cls := compute.NewCluster(*c)
+			if cls != nil {
+				drsEnabled, err = cls.DRSEnabled(d.op)
+				if err != nil {
+					d.op.Errorf("ClusterError: %s", err)
+					return vchs, err
+				}
+			}
+			d.op.Infof("DRS Status: %t", drsEnabled)
+		}
+		// compute
+		d.op.Infof("ComputeRef: %s", pool.Reference().String())
+		p, err := pool.ResourcePool(d.op)
+		if err != nil {
+			d.op.Errorf("Can't get pool: %s", err)
+			return vchs, nil
+		}
+		d.op.Infof("PoolRef: %s", p.Reference().String())
+		d.op.Infof("Pool path: %s", p.InventoryPath)
+		d.op.Infof("PoolType: %s", p.Reference().Type)
+		computeResource := compute.NewResourcePool(d.op, d.session, p.Reference())
+		// proper VM VCHS
 		children, err := d.getChildVCHs(pool, true)
 		// #nosec: Errors unhandled.
 		if err != nil {
@@ -322,6 +355,8 @@ func (d *Dispatcher) searchVCHsFromPools(pools []*object.ComputeResource) []*vm.
 		} else {
 			vchs = append(vchs, children...)
 		}
+		// vAPPs == if DRS
+
 	}
 
 	return vchs
@@ -339,34 +374,34 @@ func (d *Dispatcher) getChildVCHs(pool *object.ComputeResource, searchVapp bool)
 	var vchs []*vm.VirtualMachine
 	var vms []*vm.VirtualMachine
 	var err error
-	drsEnabled := true
-	poolName := pool.Name()
-	d.op.Infof("PoolName: %s", poolName)
-	if pool.Reference().Type == "ClusterComputeResource" {
-		d.op.Infof("We've got a Cluster...")
-		c := object.NewComputeResource(d.session.Vim25(), pool.Reference())
-		// check DRS
-		cls := compute.NewCluster(*c)
-		if cls != nil {
-			drsEnabled, err = cls.DRSEnabled(d.op)
-			if err != nil {
-				d.op.Errorf("ClusterError: %s", err)
-				return vchs, err
-			}
-		}
-		d.op.Infof("DRS Status: %t", drsEnabled)
-	}
-	// compute
-	d.op.Infof("ComputeRef: %s", pool.Reference().String())
-	p, err := pool.ResourcePool(d.op)
-	if err != nil {
-		d.op.Errorf("Can't get pool: %s", err)
-		return vchs, nil
-	}
-	d.op.Infof("PoolRef: %s", p.Reference().String())
-	d.op.Infof("Pool path: %s", p.InventoryPath)
-	d.op.Infof("PoolType: %s", p.Reference().Type)
-	computeResource := compute.NewResourcePool(d.op, d.session, p.Reference())
+
+	// poolName := pool.Name()
+	// d.op.Infof("CR Path: %s", pool.InventoryPath)
+	// if pool.Reference().Type == "ClusterComputeResource" {
+	// 	d.op.Infof("We've got a Cluster...")
+	// 	c := object.NewComputeResource(d.session.Vim25(), pool.Reference())
+	// 	// check DRS
+	// 	cls := compute.NewCluster(*c)
+	// 	if cls != nil {
+	// 		drsEnabled, err = cls.DRSEnabled(d.op)
+	// 		if err != nil {
+	// 			d.op.Errorf("ClusterError: %s", err)
+	// 			return vchs, err
+	// 		}
+	// 	}
+	// 	d.op.Infof("DRS Status: %t", drsEnabled)
+	// }
+	// // compute
+	// d.op.Infof("ComputeRef: %s", pool.Reference().String())
+	// p, err := pool.ResourcePool(d.op)
+	// if err != nil {
+	// 	d.op.Errorf("Can't get pool: %s", err)
+	// 	return vchs, nil
+	// }
+	// d.op.Infof("PoolRef: %s", p.Reference().String())
+	// d.op.Infof("Pool path: %s", p.InventoryPath)
+	// d.op.Infof("PoolType: %s", p.Reference().Type)
+	// computeResource := compute.NewResourcePool(d.op, d.session, p.Reference())
 	if !drsEnabled {
 		d.op.Infof("Children")
 		// drs disabled so only the cluster resource pool -- we must get the children
