@@ -37,12 +37,19 @@ type ResourcePool struct {
 
 // NewResourcePool returns a New ResourcePool object
 func NewResourcePool(ctx context.Context, session *session.Session, moref types.ManagedObjectReference) *ResourcePool {
+	rp := object.NewResourcePool(session.Vim25(), moref)
+
+	if session.Finder != nil {
+		element, _ := session.Finder.Element(ctx, moref)
+
+		if element != nil {
+			rp.SetInventoryPath(element.Path)
+		}
+	}
+
 	return &ResourcePool{
-		ResourcePool: object.NewResourcePool(
-			session.Vim25(),
-			moref,
-		),
-		Session: session,
+		ResourcePool: rp,
+		Session:      session,
 	}
 }
 
